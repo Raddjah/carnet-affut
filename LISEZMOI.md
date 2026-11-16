@@ -19,10 +19,14 @@ Dans les deux modes, vos observations sont enregistrées sur l'appareil.
 
 **Mode local.** Rien à configurer. Vous gérez votre liste d'abonnés dans l'onglet Abonnés et envoyez chaque observation par e-mail (copie cachée à tous) ou par le bouton Partager (WhatsApp, Signal, SMS…).
 
-**Mode en ligne.** Vos abonnés ouvrent la même adresse, créent un compte, et vous validez leur demande. Vous décidez de ce qu'ils voient :
+**Mode en ligne.** Un fil commun. Vos abonnés ouvrent la même adresse, créent un compte, et vous validez leur demande. Un abonné accepté lit le fil et peut y publier ses propres observations ; il garde aussi son carnet sur son appareil. Chacun décide de ce qu'il publie :
 
 - **Tout synchroniser** : chaque observation, existante ou nouvelle, est publiée automatiquement.
-- **Choisir observation par observation** : cochez dans Réglages ce qui doit être en ligne, ou utilisez le bouton « Publier pour les abonnés » dans le détail d'une observation. Une pastille « En ligne » ou « Local » indique l'état de chacune.
+- **Choisir observation par observation** : cochez dans Réglages ce qui doit être en ligne, ou utilisez le bouton « Publier dans le fil en ligne » dans le détail d'une observation. Une pastille « En ligne » ou « Local » indique l'état de chacune.
+
+Chacun ne modifie et ne retire que ses propres observations. Vous seul, en tant qu'auteur du carnet, pouvez retirer du fil celle d'un abonné.
+
+**Espèces sensibles.** En mode en ligne, la position GPS d'une espèce sensible au dérangement n'est jamais publiée : elle reste sur l'appareil de l'observateur. Le nom du lieu, lui, est publié : choisissez-le assez large (une vallée, une commune) pour ne pas désigner l'emplacement précis. Cela vaut pour les espèces marquées sensibles dans le glossaire et pour toute observation où la case « Espèce sensible » est cochée. Le texte envoyé par e-mail ou par le bouton Partager omet aussi la position. Les observations sensibles déjà publiées sont mises en conformité à la prochaine connexion de leur auteur. Ce masquage est fait par l'application elle-même.
 
 Le mode en ligne demande un projet Firebase gratuit :
 
@@ -38,8 +42,9 @@ Tant que `config.js` n'est pas renseigné, le choix « Mode en ligne » reste gr
 ## 4. Mettre à jour depuis la version 1
 
 1. Avant tout, exportez une sauvegarde depuis l'ancienne version (onglet Abonnés → Exporter).
-2. Remplacez `index.html`, `app.js`, `sw.js` et `LISEZMOI.md`. Gardez votre `config.js` si vous l'avez modifié ; les autres fichiers sont inchangés.
-3. Rouvrez l'application avec du réseau, deux fois si besoin. Vos observations sont reprises automatiquement.
+2. Remplacez `index.html`, `app.js`, `sw.js` et `LISEZMOI.md`. Gardez votre `config.js` si vous l'avez modifié.
+3. Si vous utilisez le mode en ligne : republiez `firestore.rules` dans la console Firebase (Firestore → Règles), après y avoir remis votre adresse à la place de `VOTRE_EMAIL`. Sans cela, vos abonnés ne peuvent pas publier.
+4. Rouvrez l'application avec du réseau, deux fois si besoin. Vos observations sont reprises automatiquement.
 
 ## Bon à savoir
 
