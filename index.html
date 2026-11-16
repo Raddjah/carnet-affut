@@ -41,7 +41,7 @@ header.top{display:flex;align-items:baseline;justify-content:space-between;gap:1
 header.top small{color:var(--muted);font-size:.8rem;text-align:right}
 main{flex:1;overflow-y:auto;padding:14px 16px 96px;display:flex;flex-direction:column;gap:12px;max-width:720px;width:100%;margin:0 auto}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-nav.tabs a{flex:1;text-align:center;padding:14px 4px;color:var(--muted);text-decoration:none;font-weight:600;font-size:.85rem;border-top:3px solid transparent}
+nav.tabs a{flex:1;min-width:0;text-align:center;padding:14px 2px;color:var(--muted);text-decoration:none;font-weight:600;font-size:.78rem;border-top:3px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 nav.tabs a[aria-current="page"]{color:var(--accent);border-top-color:var(--accent)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
 button.card{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
@@ -77,6 +77,22 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .photo{max-width:100%;border-radius:10px}
 #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.9rem;max-width:calc(100vw - 32px);z-index:2000;display:none}
 .empty{color:var(--muted);text-align:center;padding:28px 8px}
+input[type="checkbox"],input[type="radio"]{width:20px;height:20px;flex:none;padding:0;accent-color:var(--accent)}
+label.btn{display:inline-flex;flex-direction:row;align-items:center;color:var(--ink);font-size:.95rem;cursor:pointer}
+label.btn.small{font-size:.85rem}
+.btn[disabled]{opacity:.5;cursor:default}
+.stack{display:flex;flex-direction:column;gap:10px}
+.stack.tight{gap:6px}
+.field{display:flex;flex-direction:column;gap:6px}
+.flabel{font-size:.85rem;font-weight:600;color:var(--muted)}
+label.opt,label.chk{flex-direction:row;align-items:flex-start;gap:10px;font-size:1rem;font-weight:400;color:var(--ink);padding:10px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+label.chk{align-items:center;padding:8px 10px}
+label.opt:has(input:checked){border-color:var(--accent)}
+label.opt:has(input:disabled){opacity:.55;cursor:default}
+.gph{margin:-12px -14px 4px;display:flex;flex-direction:column}
+.gph img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:9px 9px 0 0;background:var(--line);display:block}
+.gph figcaption{font-size:.72rem;color:var(--muted);padding:4px 14px 0;overflow-wrap:anywhere}
+.gph a,.meta a{color:var(--accent)}
 @media (max-width:380px){.two{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:no-preference){.btn,.chip{transition:background .15s,color .15s}}
 </style>
@@ -92,6 +108,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <a href="#carte">Carte</a>
   <a href="#glossaire">Glossaire</a>
   <a href="#abonnes" id="tab-abonnes">Abonnés</a>
+  <a href="#reglages">Réglages</a>
 </nav>
 <dialog id="dlg-form" aria-label="Observation"></dialog>
 <dialog id="dlg-detail" aria-label="Détail de l'observation"></dialog>

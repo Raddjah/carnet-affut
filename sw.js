@@ -1,5 +1,7 @@
-/* Service worker : rend l'application installable et consultable hors connexion. */
-var CACHE = "carnet-affut-v1";
+/* Service worker v2 : application installable et consultable hors connexion,
+   photos du glossaire (Wikimedia Commons) gardées en cache après le premier affichage. */
+var CACHE = "carnet-affut-v2";
+var PHOTOS = "carnet-affut-photos";
 var SHELL = ["./", "index.html", "app.js", "glossaire.js", "config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (e) {
@@ -7,12 +9,24 @@ self.addEventListener("install", function (e) {
 });
 self.addEventListener("activate", function (e) {
   e.waitUntil(caches.keys().then(function (keys) {
-    return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+    return Promise.all(keys.filter(function (k) { return k !== CACHE && k !== PHOTOS; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 self.addEventListener("fetch", function (e) {
+  if (e.request.method !== "GET") return;
   var url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== location.origin) return; // cartes, polices et Firebase passent en direct
+  if (url.hostname === "upload.wikimedia.org") {            // photos du glossaire : cache d'abord
+    e.respondWith(caches.open(PHOTOS).then(function (c) {
+      return c.match(e.request).then(function (hit) {
+        return hit || fetch(e.request).then(function (r) {
+          if (r.ok) c.put(e.request, r.clone());
+          return r;
+        });
+      });
+    }));
+    return;
+  }
+  if (url.origin !== location.origin) return;               // cartes, polices et Firebase passent en direct
   e.respondWith(
     fetch(e.request).then(function (r) {
       var copy = r.clone();

@@ -13,11 +13,18 @@ Le GPS et l'installation exigent une adresse en HTTPS. Déposez le contenu de ce
 
 Ouvrez l'adresse dans Chrome, puis menu ⋮ → « Ajouter à l'écran d'accueil » (ou « Installer l'application »).
 
-## 3. Les deux modes
+## 3. Choisir son mode (onglet Réglages)
 
-**Mode local (par défaut).** Rien à configurer. Les données restent sur votre téléphone. Vous gérez votre liste d'abonnés dans l'onglet Abonnés et envoyez chaque observation par e-mail (copie cachée à tous) ou par le bouton Partager (WhatsApp, Signal, SMS…). Pensez à exporter une sauvegarde de temps en temps.
+Dans les deux modes, vos observations sont enregistrées sur l'appareil.
 
-**Mode en ligne (comptes abonnés).** Vos abonnés ouvrent la même adresse, créent un compte, et vous validez leur demande. Ils voient alors votre fil et la carte. Il faut un projet Firebase gratuit :
+**Mode local.** Rien à configurer. Vous gérez votre liste d'abonnés dans l'onglet Abonnés et envoyez chaque observation par e-mail (copie cachée à tous) ou par le bouton Partager (WhatsApp, Signal, SMS…).
+
+**Mode en ligne.** Vos abonnés ouvrent la même adresse, créent un compte, et vous validez leur demande. Vous décidez de ce qu'ils voient :
+
+- **Tout synchroniser** : chaque observation, existante ou nouvelle, est publiée automatiquement.
+- **Choisir observation par observation** : cochez dans Réglages ce qui doit être en ligne, ou utilisez le bouton « Publier pour les abonnés » dans le détail d'une observation. Une pastille « En ligne » ou « Local » indique l'état de chacune.
+
+Le mode en ligne demande un projet Firebase gratuit :
 
 1. Sur console.firebase.google.com, créez un projet, puis ajoutez une application Web.
 2. Authentication → Sign-in method → activez « Adresse e-mail/Mot de passe ».
@@ -26,11 +33,18 @@ Ouvrez l'adresse dans Chrome, puis menu ⋮ → « Ajouter à l'écran d'accueil
 5. Dans `config.js`, renseignez `auteur`, `ownerEmail` et le bloc `firebase` (apiKey, authDomain, projectId, appId) fourni par la console.
 6. Remettez en ligne, ouvrez l'application et **créez votre compte en premier** avec l'adresse `ownerEmail`.
 
-En passant du mode local au mode en ligne, exportez vos données avant, puis importez-les après vous être connecté.
+Tant que `config.js` n'est pas renseigné, le choix « Mode en ligne » reste grisé.
+
+## 4. Mettre à jour depuis la version 1
+
+1. Avant tout, exportez une sauvegarde depuis l'ancienne version (onglet Abonnés → Exporter).
+2. Remplacez `index.html`, `app.js`, `sw.js` et `LISEZMOI.md`. Gardez votre `config.js` si vous l'avez modifié ; les autres fichiers sont inchangés.
+3. Rouvrez l'application avec du réseau, deux fois si besoin. Vos observations sont reprises automatiquement.
 
 ## Bon à savoir
 
-- Les photos sont réduites à 900 px pour rester légères ; vos originaux ne sont pas modifiés.
+- Photo d'une observation : « Prendre une photo » ouvre l'appareil photo du téléphone, « Choisir un fichier ou dans la galerie » ouvre vos images. Elle est réduite à 1280 px ; vos originaux ne sont pas modifiés.
+- Photos du glossaire : elles viennent de Wikimedia Commons (image principale de l'article Wikipédia de l'espèce), avec auteur et licence affichés dessous. Elles se chargent à la première ouverture du glossaire avec du réseau, puis restent disponibles hors ligne.
 - Les espèces marquées « sensibles » (cigogne noire, grand-duc, chat forestier, lynx…) affichent un rappel de ne pas rediffuser la position exacte.
 - Le fond de carte est OpenStreetMap et nécessite une connexion ; le reste fonctionne hors ligne.
 - Pour ajouter une espèce au glossaire, ajoutez une ligne dans `glossaire.js`.
