@@ -4,12 +4,13 @@
    Pour activer les comptes abonnés et le fil partagé, suivez LISEZMOI.md. */
 window.CARNET_CONFIG = {
   titre: "Carnet d'affût",
-  auteur: "",                 // votre nom, affiché aux abonnés
-  ownerEmail: "",             // l'e-mail de VOTRE compte (seul autorisé à publier)
+  auteur: "Eric S.",                 // votre nom, affiché aux abonnés
+  ownerEmail: "eszturma@gmail.com",             // l'e-mail de VOTRE compte (seul autorisé à publier)
   firebase: {
-    // apiKey: "...",
-    // authDomain: "...",
-    // projectId: "...",
-    // appId: "..."
+    apiKey: "AIzaSyCmzvUlFdIiOKcrdmupXSzXD-SpGyk_wlI",
+    authDomain: "carnet-affut.firebaseapp.com",
+    projectId: "carnet-affut",
+    appId: "1:39739146120:web:32203a34687f403eacc43d",
+    measurementId: "G-676V255EH7"
   }
 };
