@@ -468,7 +468,9 @@
   function viewCarte() {
     var g = gateHTML(); if (g) return g;
     var n = obsList().filter(hasCoords).length;
-    return '<p class="meta">' + plural(n, "observation") + ' sur la carte. Touchez un point pour le détail.</p>' +
+    return '<p class="meta">' + plural(n, "observation") + ' sur la carte. Touchez une icône, puis « Voir le détail ».</p>' +
+      '<div class="row legend">' + pinHTML("oiseaux", false) + '<span>Oiseau</span>' + pinHTML("mammiferes", false) + '<span>Mammifère</span>' +
+      pinHTML("autre", false) + '<span>Autre</span>' + pinHTML("oiseaux", true) + '<span>Espèce sensible</span></div>' +
       '<div id="map-all" class="map big"></div>';
   }
 
@@ -627,14 +629,38 @@
   function dot(latlng, sensible) {
     return L.circleMarker(latlng, { radius: 9, weight: 2, color: "#ffffff", fillColor: sensible ? "#c4621b" : "#0c6b7f", fillOpacity: 1 });
   }
+  /* Icônes de carte : oiseau, mammifère, ou point neutre pour une espèce hors glossaire. */
+  var GLYPH = {
+    oiseaux: '<ellipse cx="12" cy="14" rx="6" ry="4"/><circle cx="17.5" cy="9.5" r="2.8"/><polygon points="20,8.6 23.5,10 20,11.2"/><polygon points="6.8,12.6 1.5,9.5 3,15.8"/>',
+    mammiferes: '<ellipse cx="12" cy="15.8" rx="4.6" ry="3.6"/><circle cx="6.3" cy="10.8" r="1.9"/><circle cx="10" cy="7.4" r="1.9"/><circle cx="14" cy="7.4" r="1.9"/><circle cx="17.7" cy="10.8" r="1.9"/>',
+    autre: '<circle cx="12" cy="12" r="4.5"/>'
+  };
+  function obsGroup(o) { var sp = BY_NAME[(o.species || "").toLowerCase()]; return sp ? sp.group : "autre"; }
+  function pinHTML(group, sensible) {
+    return '<span class="pin pin-' + group + (sensible ? " pin-sensible" : "") + '"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor">' + GLYPH[group] + '</svg></span>';
+  }
+  function obsMarker(o) {
+    var sp = BY_NAME[(o.species || "").toLowerCase()], group = obsGroup(o);
+    return L.marker([o.lat, o.lng], {
+      title: o.species, alt: (group === "oiseaux" ? "Oiseau : " : group === "mammiferes" ? "Mammifère : " : "") + o.species,
+      icon: L.divIcon({ className: "pin-wrap", html: pinHTML(group, sp && sp.sensible), iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] })
+    });
+  }
+  function popupNode(o) {
+    var box = document.createElement("div");
+    box.className = "pop";
+    box.innerHTML = '<strong>' + esc(o.species) + (o.count > 1 ? " × " + esc(o.count) : "") + '</strong>' +
+      '<span>' + esc(fmtDate(o.date)) + '</span>' + (o.place ? '<span>' + esc(o.place) + '</span>' : "") +
+      '<a href="#carte" class="pop-link">Voir le détail de l\'observation</a>';
+    // Leaflet bloque la propagation des clics dans une bulle : le lien porte son propre écouteur.
+    box.querySelector(".pop-link").addEventListener("click", function (e) { e.preventDefault(); openDetail(o.id); });
+    return box;
+  }
   function drawAllMap() {
     var m = makeMap("all", $("map-all"), CENTER, 8); if (!m) return;
     var pts = [];
     obsList().filter(hasCoords).forEach(function (o) {
-      var sp = BY_NAME[(o.species || "").toLowerCase()];
-      var mk = dot([o.lat, o.lng], sp && sp.sensible).addTo(m);
-      mk.bindTooltip(o.species);
-      mk.on("click", function () { openDetail(o.id); });
+      obsMarker(o).addTo(m).bindPopup(popupNode(o));
       pts.push([o.lat, o.lng]);
     });
     if (pts.length) m.fitBounds(pts, { padding: [30, 30], maxZoom: 13 });
@@ -667,7 +693,7 @@
     if (!d.open) d.showModal();
     if (hasCoords(o) && $("map-detail")) {
       var m = makeMap("detail", $("map-detail"), [o.lat, o.lng], 14);
-      if (m) dot([o.lat, o.lng], sp && sp.sensible).addTo(m);
+      if (m) obsMarker(o).addTo(m);
     }
   }
 

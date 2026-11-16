@@ -68,7 +68,7 @@ form{display:flex;flex-direction:column;gap:12px}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .cat{font-family:var(--display);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:8px}
 .map{height:240px;border-radius:10px;border:1px solid var(--line);overflow:hidden;background:var(--line)}
-.map.big{height:calc(100vh - 190px);min-height:320px}
+.map.big{height:calc(100vh - 240px);min-height:320px}
 .notice{border-left:4px solid var(--accent);background:var(--surface);padding:10px 12px;border-radius:0 8px 8px 0;font-size:.9rem}
 .notice.warn{border-left-color:var(--warn)}
 dialog{border:none;border-radius:14px;padding:0;background:var(--surface);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 32px)}
@@ -93,6 +93,20 @@ label.opt:has(input:disabled){opacity:.55;cursor:default}
 .gph img{width:100%;aspect-ratio:3/2;object-fit:contain;border-radius:9px 9px 0 0;background:var(--bg);display:block}
 .gph figcaption{font-size:.72rem;color:var(--muted);padding:4px 14px 0;overflow-wrap:anywhere}
 .gph a,.meta a{color:var(--accent)}
+.pin-wrap{background:none;border:none}
+.pin{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:#fff;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);flex:none}
+.pin-oiseaux{background:#0c6b7f}
+.pin-mammiferes{background:#7a4a1e}
+.pin-autre{background:#56635a}
+.pin-sensible{border-color:#f0984f;box-shadow:0 0 0 2px #b4530f,0 1px 5px rgba(0,0,0,.45)}
+.legend{font-size:.85rem;color:var(--muted);gap:6px 8px}
+.legend .pin{width:24px;height:24px;border-width:1px;box-shadow:none}
+.legend .pin svg{width:14px;height:14px}
+.legend .pin-sensible{box-shadow:0 0 0 2px #b4530f}
+.legend span:not(.pin){margin-right:8px}
+.pop{display:flex;flex-direction:column;gap:3px;font:400 .9rem var(--body);min-width:170px}
+.pop strong{font-family:var(--display);font-size:1rem}
+.pop-link{margin-top:6px;font-weight:600;color:#0c6b7f;padding:6px 0}
 @media (max-width:380px){.two{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:no-preference){.btn,.chip{transition:background .15s,color .15s}}
 </style>
