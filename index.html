@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carnet d'affût</title>
+<meta name="theme-color" content="#0c6b7f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* Carnet de terrain : fond lichen, encre sous-bois, accent bleu martin-pêcheur, alerte orange. Une colonne, onglets en bas. */
+:root{
+  --bg:#eef1ea; --surface:#fbfcf9; --ink:#17231c; --muted:#5c6b61; --line:#d5dccf;
+  --accent:#0c6b7f; --accent-ink:#ffffff; --warn:#b4530f; --ok:#2f6d2c;
+  --display:"Bricolage Grotesque", "Trebuchet MS", sans-serif;
+  --body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#101713; --surface:#18221c; --ink:#e6ede4; --muted:#93a297; --line:#2c3a31;
+    --accent:#5cc0d3; --accent-ink:#06262d; --warn:#f0984f; --ok:#86c97f;
+    color-scheme: dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--body);display:flex;flex-direction:column}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:1.35rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.05rem;font-weight:700}
+h3{font-size:1rem;font-weight:700}
+p{margin:0}
+em.sci{font-style:italic;color:var(--muted);font-size:.9rem}
+header.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--surface)}
+header.top small{color:var(--muted);font-size:.8rem;text-align:right}
+main{flex:1;overflow-y:auto;padding:14px 16px 96px;display:flex;flex-direction:column;gap:12px;max-width:720px;width:100%;margin:0 auto}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs a{flex:1;text-align:center;padding:14px 4px;color:var(--muted);text-decoration:none;font-weight:600;font-size:.85rem;border-top:3px solid transparent}
+nav.tabs a[aria-current="page"]{color:var(--accent);border-top-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+button.card{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.grow{flex:1;min-width:0}
+.meta{color:var(--muted);font-size:.88rem}
+.thumb{width:64px;height:64px;border-radius:8px;object-fit:cover;flex:none}
+.pill{display:inline-block;font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.warn{color:var(--warn);border-color:var(--warn)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.btn{font:600 .95rem var(--body);padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;text-decoration:none;display:inline-block}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--warn);border-color:var(--warn)}
+.btn.small{padding:6px 10px;font-size:.85rem}
+.btn:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.fab{position:fixed;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));box-shadow:0 4px 14px rgba(0,0,0,.25);border-radius:99px;padding:14px 20px;z-index:500}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+label{font-size:.85rem;font-weight:600;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+form{display:flex;flex-direction:column;gap:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font:600 .85rem var(--body);padding:7px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cat{font-family:var(--display);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:8px}
+.map{height:240px;border-radius:10px;border:1px solid var(--line);overflow:hidden;background:var(--line)}
+.map.big{height:calc(100vh - 190px);min-height:320px}
+.notice{border-left:4px solid var(--accent);background:var(--surface);padding:10px 12px;border-radius:0 8px 8px 0;font-size:.9rem}
+.notice.warn{border-left-color:var(--warn)}
+dialog{border:none;border-radius:14px;padding:0;background:var(--surface);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.dlg{padding:16px;display:flex;flex-direction:column;gap:12px}
+.photo{max-width:100%;border-radius:10px}
+#toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.9rem;max-width:calc(100vw - 32px);z-index:2000;display:none}
+.empty{color:var(--muted);text-align:center;padding:28px 8px}
+@media (max-width:380px){.two{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){.btn,.chip{transition:background .15s,color .15s}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1 id="app-title">Carnet d'affût</h1>
+  <small id="app-status"></small>
+</header>
+<main id="main"></main>
+<nav class="tabs" aria-label="Sections">
+  <a href="#observations">Observations</a>
+  <a href="#carte">Carte</a>
+  <a href="#glossaire">Glossaire</a>
+  <a href="#abonnes" id="tab-abonnes">Abonnés</a>
+</nav>
+<dialog id="dlg-form" aria-label="Observation"></dialog>
+<dialog id="dlg-detail" aria-label="Détail de l'observation"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="config.js"></script>
+<script src="glossaire.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+rules_version = '2';
+// Remplacez VOTRE_EMAIL par l'adresse de votre compte auteur (la même que ownerEmail dans config.js, en minuscules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null && request.auth.token.email == 'VOTRE_EMAIL';
+    }
+    function isApproved() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/subscribers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/subscribers/$(request.auth.uid)).data.approved == true;
+    }
+    // Observations : vous seul publiez ; seuls les abonnés acceptés lisent.
+    match /observations/{id} {
+      allow read: if isOwner() || isApproved();
+      allow write: if isOwner();
+    }
+    // Abonnés : chacun crée sa demande (non approuvée) et peut la supprimer ; vous seul approuvez.
+    match /subscribers/{uid} {
+      allow read, delete: if isOwner() || (request.auth != null && request.auth.uid == uid);
+      allow create: if isOwner()
+        || (request.auth != null && request.auth.uid == uid && request.resource.data.approved == false);
+      allow update: if isOwner();
+    }
+  }
+}
