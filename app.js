@@ -629,10 +629,10 @@
   function dot(latlng, sensible) {
     return L.circleMarker(latlng, { radius: 9, weight: 2, color: "#ffffff", fillColor: sensible ? "#c4621b" : "#0c6b7f", fillOpacity: 1 });
   }
-  /* Icônes de carte : oiseau, mammifère, ou point neutre pour une espèce hors glossaire. */
+  /* Icônes de carte : silhouette d'oiseau, silhouette de renard pour les mammifères, ou point neutre pour une espèce hors glossaire. */
   var GLYPH = {
-    oiseaux: '<ellipse cx="12" cy="14" rx="6" ry="4"/><circle cx="17.5" cy="9.5" r="2.8"/><polygon points="20,8.6 23.5,10 20,11.2"/><polygon points="6.8,12.6 1.5,9.5 3,15.8"/>',
-    mammiferes: '<ellipse cx="12" cy="15.8" rx="4.6" ry="3.6"/><circle cx="6.3" cy="10.8" r="1.9"/><circle cx="10" cy="7.4" r="1.9"/><circle cx="14" cy="7.4" r="1.9"/><circle cx="17.7" cy="10.8" r="1.9"/>',
+    oiseaux: '<path d="M23.2 9.6 L20.2 8.6 C19.8 6.2 16.2 5.4 14.4 7.8 C11 9.4 7.2 12 4.6 15 L0.8 19.4 L3.2 20.2 L6.8 17.6 C10.4 19.2 16.2 18.6 18.6 13.6 C19.2 12.4 19.8 11.4 20.4 10.6 Z"/><rect x="10.4" y="18" width="1" height="3.6"/><rect x="13" y="17.8" width="1" height="3.6"/>',
+    mammiferes: '<path d="M23 11.6 L19.6 8.6 L19.7 4.2 L17.9 7 L16.5 4.6 L15.9 8.6 C14.5 9.6 12 10 8.2 10.4 C5.6 10.2 2.8 7.6 0.8 3.4 C0.2 8.6 2.2 13.2 6.3 14.2 L6.6 20.2 L8.2 20.2 L8.7 15.6 L13.1 15.6 L13.3 20.2 L14.9 20.2 L15.3 15 C16.4 14.6 17.2 13.9 17.6 13.2 L20.2 12.7 Z"/>',
     autre: '<circle cx="12" cy="12" r="4.5"/>'
   };
   function obsGroup(o) { var sp = BY_NAME[(o.species || "").toLowerCase()]; return sp ? sp.group : "autre"; }
