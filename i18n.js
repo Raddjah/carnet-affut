@@ -24,7 +24,7 @@ window.I18N = {
     },
     s: {
       tab_obs: "Observations", tab_map: "Carte", tab_gloss: "Glossaire", tab_subs: "Abonnés", tab_account: "Compte", tab_settings: "Réglages",
-      st_local: "Mode local", st_online: "En ligne", st_author: "Auteur", st_subscriber: "Abonné",
+      st_local: "Mode local", st_online: "En ligne", st_author: "Auteur", st_subscriber: "Abonné", st_offline: "hors connexion",
       loading: "Connexion…", cancel: "Annuler", save: "Enregistrer", edit: "Modifier", del: "Supprimer",
       close: "Fermer", copy: "Copier", share: "Partager", add: "Ajouter", name: "Nom", email: "E-mail",
 
@@ -107,7 +107,7 @@ window.I18N = {
       published_by: function (n) { return "Publiée par " + n; },
       sens_other: "Position GPS non communiquée : espèce sensible au dérangement.",
       sens_mine_online: "Espèce sensible : la position GPS reste sur votre appareil. Seul le nom du lieu est publié en ligne.",
-      sens_local: "Espèce sensible au dérangement : merci de ne pas rediffuser cette position.",
+      sens_local: "Espèce sensible au dérangement : la position GPS n'est pas incluse quand vous partagez cette observation. Merci de ne pas la rediffuser.",
       cam_never_published: "Emplacement gardé sur cet appareil : il n'est jamais publié dans le fil en ligne.",
       email_subs: "E-mail aux abonnés", publish: "Publier dans le fil en ligne", unpublish: "Retirer du fil en ligne",
       moderate: "Retirer du fil", copy_sheet: "Copier la fiche",
@@ -153,6 +153,8 @@ window.I18N = {
       t_imported: function (n) { return n + " élément(s) importé(s)."; }, t_import_fail: "Fichier de sauvegarde illisible.",
       t_cloud_fail: "Synchronisation impossible : vérifiez la connexion et vos droits.",
       t_cloud_unreachable: "Service en ligne injoignable. Vous pouvez repasser en mode local dans Réglages.",
+      t_offline: "Hors connexion : votre carnet reste utilisable sur l'appareil. Le fil en ligne reprendra au retour du réseau.",
+      t_need_network: "Action impossible hors connexion.",
       t_read_denied: "Lecture du fil en ligne refusée.", t_like_fail: "Impossible d'envoyer le j'aime.",
       t_unlike_fail: "Impossible de retirer le j'aime.",
 
@@ -191,7 +193,7 @@ window.I18N = {
     },
     s: {
       tab_obs: "Beobachtungen", tab_map: "Karte", tab_gloss: "Glossar", tab_subs: "Abonnenten", tab_account: "Konto", tab_settings: "Einstellungen",
-      st_local: "Lokaler Modus", st_online: "Online", st_author: "Autor", st_subscriber: "Abonnent",
+      st_local: "Lokaler Modus", st_online: "Online", st_author: "Autor", st_subscriber: "Abonnent", st_offline: "offline",
       loading: "Verbindung…", cancel: "Abbrechen", save: "Speichern", edit: "Bearbeiten", del: "Löschen",
       close: "Schließen", copy: "Kopieren", share: "Teilen", add: "Hinzufügen", name: "Name", email: "E-Mail",
 
@@ -274,7 +276,7 @@ window.I18N = {
       published_by: function (n) { return "Veröffentlicht von " + n; },
       sens_other: "GPS-Position nicht mitgeteilt: störungsempfindliche Art.",
       sens_mine_online: "Störungsempfindliche Art: die GPS-Position bleibt auf Ihrem Gerät. Nur der Ortsname wird online veröffentlicht.",
-      sens_local: "Störungsempfindliche Art: bitte diese Position nicht weiterverbreiten.",
+      sens_local: "Störungsempfindliche Art: die GPS-Position wird beim Teilen dieser Beobachtung nicht mitgesendet. Bitte nicht weiterverbreiten.",
       cam_never_published: "Standort bleibt auf diesem Gerät: er wird nie im Online-Feed veröffentlicht.",
       email_subs: "E-Mail an die Abonnenten", publish: "Im Online-Feed veröffentlichen", unpublish: "Aus dem Online-Feed nehmen",
       moderate: "Aus dem Feed nehmen", copy_sheet: "Datenblatt kopieren",
@@ -320,6 +322,8 @@ window.I18N = {
       t_imported: function (n) { return n + " Eintrag/Einträge importiert."; }, t_import_fail: "Sicherungsdatei nicht lesbar.",
       t_cloud_fail: "Synchronisierung nicht möglich: prüfen Sie Verbindung und Rechte.",
       t_cloud_unreachable: "Online-Dienst nicht erreichbar. Sie können unter Einstellungen in den lokalen Modus zurückwechseln.",
+      t_offline: "Offline: Ihr Notizbuch bleibt auf dem Gerät nutzbar. Der Online-Feed setzt wieder ein, sobald das Netz zurück ist.",
+      t_need_network: "Ohne Verbindung nicht möglich.",
       t_read_denied: "Lesen des Online-Feeds verweigert.", t_like_fail: "Gefällt-mir konnte nicht gesendet werden.",
       t_unlike_fail: "Gefällt-mir konnte nicht zurückgenommen werden.",
 
@@ -358,7 +362,7 @@ window.I18N = {
     },
     s: {
       tab_obs: "Sightings", tab_map: "Map", tab_gloss: "Glossary", tab_subs: "Subscribers", tab_account: "Account", tab_settings: "Settings",
-      st_local: "Local mode", st_online: "Online", st_author: "Author", st_subscriber: "Subscriber",
+      st_local: "Local mode", st_online: "Online", st_author: "Author", st_subscriber: "Subscriber", st_offline: "offline",
       loading: "Connecting…", cancel: "Cancel", save: "Save", edit: "Edit", del: "Delete",
       close: "Close", copy: "Copy", share: "Share", add: "Add", name: "Name", email: "Email",
 
@@ -441,7 +445,7 @@ window.I18N = {
       published_by: function (n) { return "Posted by " + n; },
       sens_other: "GPS position not shared: species sensitive to disturbance.",
       sens_mine_online: "Sensitive species: the GPS position stays on your device. Only the place name is published online.",
-      sens_local: "Species sensitive to disturbance: please do not pass this position on.",
+      sens_local: "Species sensitive to disturbance: the GPS position is left out when you share this observation. Please do not pass it on.",
       cam_never_published: "Location kept on this device: it is never published to the online feed.",
       email_subs: "Email the subscribers", publish: "Post to the online feed", unpublish: "Remove from the online feed",
       moderate: "Remove from the feed", copy_sheet: "Copy the record",
@@ -487,6 +491,8 @@ window.I18N = {
       t_imported: function (n) { return n + " item(s) imported."; }, t_import_fail: "Backup file unreadable.",
       t_cloud_fail: "Could not synchronise: check the connection and your rights.",
       t_cloud_unreachable: "Online service unreachable. You can switch back to local mode in Settings.",
+      t_offline: "Offline: your notebook still works on this device. The online feed will resume when the network is back.",
+      t_need_network: "Not possible while offline.",
       t_read_denied: "Reading the online feed was refused.", t_like_fail: "Could not send the like.",
       t_unlike_fail: "Could not remove the like.",
 

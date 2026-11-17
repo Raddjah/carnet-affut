@@ -64,7 +64,7 @@
   }
 
   /* ---------- configuration et mode ---------- */
-  var VERSION = 4;   // doit correspondre au ?v=4 des balises script d'index.html
+  var VERSION = 5;   // doit correspondre au ?v=5 des balises script d'index.html
   var CFG = window.CARNET_CONFIG || {};
   var ONLINE_OK = !!(CFG.firebase && CFG.firebase.apiKey);
   var MODE = ONLINE_OK ? (LS.get("carnet.mode", null) || "online") : "local";
@@ -105,6 +105,22 @@
     sel: {}, who: "all", kind: "all"
   };
   var db = null, auth = null, unsub = [], pendingName = "";
+  /* Dernier compte connu : permet d'ouvrir son carnet sur le terrain, sans réseau,
+     même quand Firebase ne peut pas se charger. Effacé à la déconnexion. */
+  var SESSION = CLOUD ? LS.get("carnet.session", null) : null;
+  if (SESSION && SESSION.uid && (SESSION.role === "owner" || SESSION.role === "subscriber")) {
+    state.user = { uid: SESSION.uid, email: SESSION.email || "" };
+    state.role = SESSION.role; state.me = SESSION.me || null; state.loading = false;
+  } else SESSION = null;
+  function saveSession(role) {
+    var u = state.user; if (!u || !u.uid) return;
+    SESSION = { uid: u.uid, email: u.email || "", role: role, me: state.me || null };
+    LS.set("carnet.session", SESSION);
+  }
+  function clearSession() { SESSION = null; try { localStorage.removeItem("carnet.session"); } catch (e) {} }
+  function offline() { return CLOUD && !db; }
+  /* Actions qui exigent le service en ligne : refusées proprement hors connexion. */
+  function needDb() { if (CLOUD && (!db || !auth)) { toast(t("t_need_network")); return true; } return false; }
   var maps = {};
 
   function isOwner() { return state.role === "owner"; }
@@ -254,14 +270,20 @@
     }
   };
 
+  var loaded = {};
   function loadScript(src) {
+    if (loaded[src]) return Promise.resolve();
     return new Promise(function (res, rej) {
-      var s = document.createElement("script"); s.src = src; s.onload = res;
+      var s = document.createElement("script"); s.src = src;
+      s.onload = function () { loaded[src] = true; res(); };
       s.onerror = function () { rej(new Error("Chargement impossible : " + src)); };
       document.head.appendChild(s);
     });
   }
+  var cloudBusy = false;
   function initCloud() {
+    if (cloudBusy || db) return;
+    cloudBusy = true;
     var base = "https://www.gstatic.com/firebasejs/10.12.2/";
     return loadScript(base + "firebase-app-compat.js")
       .then(function () { return loadScript(base + "firebase-auth-compat.js"); })
@@ -274,10 +296,12 @@
       })
       .catch(function (e) {
         state.loading = false; render();
-        toast(t("t_cloud_unreachable"));
+        toast(SESSION || navigator.onLine === false ? t("t_offline") : t("t_cloud_unreachable"));
         console.error(e);
-      });
+      })
+      .then(function () { cloudBusy = false; });
   }
+  window.addEventListener("online", function () { if (CLOUD && !db) initCloud(); });
   function stopListeners() { unsub.forEach(function (f) { try { f(); } catch (e) {} }); unsub = []; }
 
   /* Rapproche le fil en ligne et mon carnet local ; range à part les observations des autres membres. */
@@ -325,22 +349,25 @@
   function onAuth(user) {
     stopListeners();
     state.user = user; state.loading = false; state.others = []; state.subs = []; state.me = null; state.likes = {};
-    if (!user) { state.role = "guest"; render(); return; }
+    if (!user) { state.role = "guest"; clearSession(); render(); return; }
     var owner = (CFG.ownerEmail || "").trim().toLowerCase();
     if (owner && (user.email || "").toLowerCase() === owner) {
-      state.role = "owner";
+      state.role = "owner"; saveSession("owner");
       startFeed();
       unsub.push(db.collection("subscribers").onSnapshot(function (snap) {
         state.subs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
         render();
       }, function (e) { console.error(e); }));
     } else {
-      state.role = "pending";
+      // Abonné déjà accepté sur cet appareil : pas de passage par l'écran d'attente pendant le chargement.
+      state.role = SESSION && SESSION.uid === user.uid && SESSION.role === "subscriber" ? "subscriber" : "pending";
+      if (state.role === "subscriber") state.me = SESSION.me;
       var feedOn = false;
       unsub.push(db.collection("subscribers").doc(user.uid).onSnapshot(function (d) {
         var ok = d.exists && d.data().approved === true;
         state.me = d.exists ? d.data() : null;
         state.role = ok ? "subscriber" : "pending";
+        if (ok) saveSession("subscriber"); else clearSession();
         if (ok && !feedOn) { feedOn = true; startFeed(); }
         if (!ok) state.others = [];
         render();
@@ -519,7 +546,7 @@
     lines = [obsSpecies(o) + (o.sci ? " (" + o.sci + ")" : "")];
     lines.push(fmtDate(o.date) + (o.count > 1 ? " · " + t("sh_individuals", o.count) : ""));
     if (o.place) lines.push(t("place_label") + " " + o.place);
-    if (CLOUD && isSensitive(o)) lines.push(t("sh_gps_hidden"));
+    if (isSensitive(o)) lines.push(t("sh_gps_hidden"));   // en mode local comme en ligne
     else if (hasCoords(o)) {
       lines.push(t("sh_gps") + " " + o.lat.toFixed(5) + ", " + o.lng.toFixed(5));
       lines.push(t("sh_map") + " " + osmLink(o));
@@ -787,7 +814,8 @@
     $("tab-reglages").textContent = t("tab_settings");
     $("app-title").textContent = CFG.titre || "Carnet d'affût";
     $("app-status").textContent = !CLOUD ? t("st_local")
-      : t("st_online") + (isOwner() ? " · " + t("st_author") : state.role === "subscriber" ? " · " + t("st_subscriber") : "");
+      : t("st_online") + (isOwner() ? " · " + t("st_author") : state.role === "subscriber" ? " · " + t("st_subscriber") : "") +
+        (offline() && state.user ? " · " + t("st_offline") : "");
     killMap("all");
     $("main").innerHTML = { observations: viewObservations, carte: viewCarte, glossaire: viewGlossaire, abonnes: viewAbonnes, reglages: viewReglages }[v]();
     if (v === "carte" && $("map-all")) drawAllMap();
@@ -998,6 +1026,8 @@
   document.addEventListener("click", function (e) {
     var el = e.target.closest("[data-act]"); if (!el) return;
     var act = el.dataset.act, id = el.dataset.id, o;
+    var NEEDS_NET = ["moderate", "toggle-sync", "sel-apply", "sync-all", "approve", "del-sub", "signout", "ask-sub", "unsubscribe", "reset-pass"];
+    if (NEEDS_NET.indexOf(act) >= 0 && needDb()) return;
     if (act === "new") { openForm(null, el.dataset.species || ""); }
     else if (act === "open") { openDetail(id); }
     else if (act === "close-detail") { $("dlg-detail").close(); }
@@ -1141,11 +1171,13 @@
         render();
       }).catch(function (err) { console.error(err); toast(t("t_save_fail")); });
     } else if (f.id === "sub-form") {
+      if (needDb()) return;
       var em = $("sb-email").value.trim().toLowerCase();
       if (state.subs.some(function (s) { return (s.email || "").toLowerCase() === em; })) { toast(t("t_sub_dup")); return; }
       store.addSub({ name: $("sb-name").value.trim(), email: em, approved: true, account: false, createdAt: Date.now() })
         .then(function () { toast(t("t_sub_added")); render(); });
     } else if (f.id === "auth-form") {
+      if (needDb()) return;
       var mode = (e.submitter && e.submitter.dataset.mode) || "in";
       var email = $("au-email").value.trim(), pass = $("au-pass").value;
       pendingName = $("au-name").value.trim();

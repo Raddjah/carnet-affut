@@ -39,7 +39,7 @@ Le mode en ligne demande un projet Firebase gratuit :
 1. Sur console.firebase.google.com, créez un projet, puis ajoutez une application Web.
 2. Authentication → Sign-in method → activez « Adresse e-mail/Mot de passe ».
 3. Firestore Database → créez la base (mode production, région `eur3`).
-4. Firestore → Règles : collez le contenu de `firestore.rules` après avoir remplacé `VOTRE_EMAIL`.
+4. Firestore → Règles : collez le contenu de `firestore.rules`, en vérifiant que l'adresse de la fonction `isOwner()` est bien la vôtre (en minuscules).
 5. Dans `config.js`, renseignez `auteur`, `ownerEmail` et le bloc `firebase` (apiKey, authDomain, projectId, appId) fourni par la console.
 6. Remettez en ligne, ouvrez l'application et **créez votre compte en premier** avec l'adresse `ownerEmail`.
 
@@ -48,8 +48,8 @@ Tant que `config.js` n'est pas renseigné, le choix « Mode en ligne » reste gr
 ## 4. Mettre à jour depuis la version 1
 
 1. Avant tout, exportez une sauvegarde depuis l'ancienne version (onglet Abonnés → Exporter).
-2. Remplacez `index.html`, `app.js`, `sw.js` et `LISEZMOI.md`. Gardez votre `config.js` si vous l'avez modifié.
-3. Si vous utilisez le mode en ligne : republiez `firestore.rules` dans la console Firebase (Firestore → Règles), après y avoir remis votre adresse à la place de `VOTRE_EMAIL`. Sans cela, vos abonnés ne peuvent pas publier.
+2. Remplacez `index.html`, `app.js`, `i18n.js`, `sw.js`, `firestore.rules` et `LISEZMOI.md`, et ajoutez `icon-180.png`. Gardez votre `config.js` si vous l'avez modifié.
+3. Si vous utilisez le mode en ligne : republiez `firestore.rules` dans la console Firebase (Firestore → Règles), en vérifiant l'adresse de `isOwner()`. Sans cela, vos abonnés ne peuvent ni publier ni aimer.
 4. Rouvrez l'application avec du réseau, deux fois si besoin. Vos observations sont reprises automatiquement.
 
 ## Bon à savoir
@@ -58,4 +58,6 @@ Tant que `config.js` n'est pas renseigné, le choix « Mode en ligne » reste gr
 - Photos du glossaire : elles viennent de Wikimedia Commons (image principale de l'article Wikipédia de l'espèce), avec auteur et licence affichés dessous. Elles se chargent à la première ouverture du glossaire avec du réseau, puis restent disponibles hors ligne.
 - Les espèces marquées « sensibles » (cigogne noire, grand-duc, chat forestier, lynx…) affichent un rappel de ne pas rediffuser la position exacte.
 - Le fond de carte est OpenStreetMap et nécessite une connexion ; le reste fonctionne hors ligne.
+- Hors connexion en mode en ligne : si vous vous êtes déjà connecté une fois sur l'appareil, votre carnet s'ouvre quand même. Vos nouvelles observations restent sur l'appareil et la mention « hors connexion » s'affiche en haut. Avec « Tout synchroniser », elles partent au retour du réseau.
+- Espèces sensibles : la position GPS est retirée du texte partagé (e-mail, Partager, Copier) dans les deux modes. Elle reste visible pour vous dans la fiche.
 - Pour ajouter une espèce au glossaire, ajoutez une ligne dans `glossaire.js`.
