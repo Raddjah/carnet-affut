@@ -107,6 +107,14 @@ label.opt:has(input:disabled){opacity:.55;cursor:default}
 .pop{display:flex;flex-direction:column;gap:3px;font:400 .9rem var(--body);min-width:170px}
 .pop strong{font-family:var(--display);font-size:1rem}
 .pop-link{margin-top:6px;font-weight:600;color:#0c6b7f;padding:6px 0}
+.card.obs{padding:0;gap:0}
+.card.obs>.main{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:none;border:none;padding:12px 14px;cursor:pointer;border-radius:10px}
+.card.obs>.likebar{display:flex;padding:0 14px 10px}
+.like{display:inline-flex;align-items:center;gap:6px;font:600 .85rem var(--body);color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:5px 11px;cursor:pointer}
+.like.on{color:var(--warn);border-color:var(--warn)}
+.like.static{cursor:default}
+.likerow{align-items:center;gap:10px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (max-width:380px){.two{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:no-preference){.btn,.chip{transition:background .15s,color .15s}}
 </style>

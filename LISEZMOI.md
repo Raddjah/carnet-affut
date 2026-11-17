@@ -26,6 +26,8 @@ Dans les deux modes, vos observations sont enregistrées sur l'appareil.
 
 Chacun ne modifie et ne retire que ses propres observations. Vous seul, en tant qu'auteur du carnet, pouvez retirer du fil celle d'un abonné.
 
+**J'aime.** Sur le fil en ligne, chacun peut marquer d'un j'aime les observations des autres membres : un bouton en forme de cœur figure sous chaque observation reçue, et la fiche détaillée indique qui l'a aimée. Vos propres observations affichent seulement le compteur. Les j'aime n'existent pas en mode local.
+
 **Espèces sensibles.** En mode en ligne, la position GPS d'une espèce sensible au dérangement n'est jamais publiée : elle reste sur l'appareil de l'observateur. Le nom du lieu, lui, est publié : choisissez-le assez large (une vallée, une commune) pour ne pas désigner l'emplacement précis. Cela vaut pour les espèces marquées sensibles dans le glossaire et pour toute observation où la case « Espèce sensible » est cochée. Le texte envoyé par e-mail ou par le bouton Partager omet aussi la position. Les observations sensibles déjà publiées sont mises en conformité à la prochaine connexion de leur auteur. Ce masquage est fait par l'application elle-même.
 
 Le mode en ligne demande un projet Firebase gratuit :

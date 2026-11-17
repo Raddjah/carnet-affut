@@ -70,6 +70,7 @@
     form: null,
     syncPolicy: LS.get("carnet.sync", "choose"),  // "all" = tout synchroniser, "choose" = au choix
     sel: {},                          // sélection en cours dans l'écran de synchronisation
+    likes: {},                        // j'aime du fil en ligne, par observation
     who: "all"                        // filtre de la liste en ligne : all | mine | others
   };
   var db = null, auth = null, unsub = [], pendingName = "";
@@ -276,12 +277,13 @@
     render();
   }
   function startFeed() {
+    startLikes();
     unsub.push(db.collection("observations").onSnapshot({ includeMetadataChanges: true }, onFeedSnapshot,
       function (e) { console.error(e); toast("Lecture du fil en ligne refusée."); }));
   }
   function onAuth(user) {
     stopListeners();
-    state.user = user; state.loading = false; state.others = []; state.subs = []; state.me = null;
+    state.user = user; state.loading = false; state.others = []; state.subs = []; state.me = null; state.likes = {};
     if (!user) { state.role = "guest"; render(); return; }
     var owner = (CFG.ownerEmail || "").trim().toLowerCase();
     if (owner && (user.email || "").toLowerCase() === owner) {
@@ -413,6 +415,62 @@
     else if (img.parentNode) img.parentNode.style.display = "none";
   }, true);
 
+  /* ---------- j'aime (mode en ligne) ----------
+     Un document par personne et par observation, nommé <idObservation>__<uid>,
+     pour que chacun n'écrive que son propre j'aime sans toucher à l'observation. */
+  function likesOf(id) { return state.likes[id] || []; }
+  function iLike(id) {
+    var u = myUid();
+    return likesOf(id).some(function (l) { return l.uid === u; });
+  }
+  function canLike(o) { return CLOUD && canRead() && (o.other || o.synced); }
+  function startLikes() {
+    unsub.push(db.collection("likes").onSnapshot(function (snap) {
+      var m = {};
+      snap.docs.forEach(function (d) {
+        var l = d.data();
+        if (l && l.obsId) (m[l.obsId] = m[l.obsId] || []).push(l);
+      });
+      state.likes = m; paintLikes();
+    }, function (e) { console.error(e); }));
+  }
+  function toggleLike(id) {
+    if (!cloudOwner()) return;
+    var ref = db.collection("likes").doc(id + "__" + myUid());
+    if (iLike(id)) ref.delete().catch(function () { toast("Impossible de retirer le j'aime."); });
+    else ref.set({ obsId: id, uid: myUid(), name: authorName(), createdAt: Date.now() })
+      .catch(function () { toast("Impossible d'envoyer le j'aime."); });
+  }
+  var HEART = '<path d="M12 20.4C12 20.4 3.8 14.9 3.8 9.2 3.8 6.4 6 4.4 8.4 4.4 10 4.4 11.4 5.3 12 6.5 12.6 5.3 14 4.4 15.6 4.4 18 4.4 20.2 6.4 20.2 9.2 20.2 14.9 12 20.4 12 20.4Z"/>';
+  function likeInnerHTML(o) {
+    var n = likesOf(o.id).length, on = iLike(o.id);
+    var icon = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="' + (on ? "currentColor" : "none") +
+      '" stroke="currentColor" stroke-width="2">' + HEART + '</svg><span class="n">' + n + '</span>';
+    if (!o.other) return '<span class="like static">' + icon + '<span class="sr">' + n + " j'aime</span></span>";
+    return '<button class="like' + (on ? " on" : "") + '" data-act="like" data-id="' + esc(o.id) + '" aria-pressed="' + on +
+      '" aria-label="' + (on ? "Retirer mon j'aime" : "J'aime cette observation") + '">' + icon + '</button>';
+  }
+  function likeBarHTML(o) {
+    return canLike(o) ? '<span class="likebar" data-like-for="' + esc(o.id) + '">' + likeInnerHTML(o) + '</span>' : "";
+  }
+  function likersHTML(id) {
+    var u = myUid(), names = likesOf(id).map(function (l) { return l.uid === u ? "vous" : (l.name || "un membre"); });
+    if (!names.length) return "";
+    var head = names.slice(0, 3), rest = names.length - head.length;
+    if (rest > 0) return "Aimée par " + head.join(", ") + " et " + rest + " autre" + (rest > 1 ? "s" : "");
+    return "Aimée par " + (head.length > 1 ? head.slice(0, -1).join(", ") + " et " + head[head.length - 1] : head[0]);
+  }
+  /* Mise à jour ciblée : un j'aime ne doit pas redessiner la carte ni refermer la fiche ouverte. */
+  function paintLikes() {
+    document.querySelectorAll("[data-like-for]").forEach(function (el) {
+      var o = findObs(el.getAttribute("data-like-for"));
+      if (o) el.innerHTML = likeInnerHTML(o);
+    });
+    document.querySelectorAll("[data-likers-for]").forEach(function (el) {
+      el.innerHTML = esc(likersHTML(el.getAttribute("data-likers-for")));
+    });
+  }
+
   /* ---------- texte de partage ---------- */
   function obsText(o) {
     var L = [o.species + (o.sci ? " (" + o.sci + ")" : "")];
@@ -488,14 +546,14 @@
     return list.map(function (o) {
       var where = o.other && o.locHidden ? (o.place || "Lieu non précisé") + " · position GPS masquée"
         : (o.place || (hasCoords(o) ? o.lat.toFixed(4) + ", " + o.lng.toFixed(4) : "Lieu non précisé"));
-      return '<button class="card" data-act="open" data-id="' + esc(o.id) + '"><span class="row">' +
+      return '<div class="card obs"><button class="main" data-act="open" data-id="' + esc(o.id) + '"><span class="row">' +
         (o.photo ? '<img class="thumb" alt="" src="' + esc(o.photo) + '">' : "") +
         '<span class="grow"><h3>' + esc(o.species) + (o.count > 1 ? " × " + esc(o.count) : "") + '</h3>' +
         (o.sci ? '<em class="sci">' + esc(o.sci) + '</em><br>' : "") +
         '<span class="meta">' + esc(fmtDate(o.date)) + '</span><br>' +
         '<span class="meta">' + esc(where) + (o.other ? " · par " + esc(o.authorName || CFG.auteur || "un membre") : "") + '</span>' +
         (isSensitive(o) ? ' <span class="pill warn">Espèce sensible</span>' : "") + syncPill(o) +
-        '</span></span></button>';
+        '</span></span></button>' + likeBarHTML(o) + '</div>';
     }).join("");
   }
   function viewObservations() {
@@ -735,6 +793,8 @@
       '<button class="btn primary" data-act="share" data-id="' + esc(o.id) + '">Partager</button>' +
       (isOwner() && !o.other ? '<a class="btn" data-act="mail" data-id="' + esc(o.id) + '" href="#">E-mail aux abonnés</a>' : "") +
       '<button class="btn" data-act="copy-obs" data-id="' + esc(o.id) + '">Copier</button></div>' +
+      (canLike(o) ? '<div class="row likerow">' + likeBarHTML(o) +
+        '<span class="meta" data-likers-for="' + esc(o.id) + '">' + esc(likersHTML(o.id)) + '</span></div>' : "") +
       (cloudMine ? '<div><button class="btn" data-act="toggle-sync" data-id="' + esc(o.id) + '">' +
         (o.synced ? "Retirer du fil en ligne" : "Publier dans le fil en ligne") + '</button></div>' : "") +
       '<div class="row">' +
@@ -841,6 +901,7 @@
       myList().forEach(function (x) { state.sel[x.id] = act === "sel-all"; }); render();
     }
     else if (act === "who") { state.who = el.dataset.v; render(); }
+    else if (act === "like") { toggleLike(id); }
     else if (act === "moderate") {
       if (confirm("Retirer cette observation du fil en ligne ? Son auteur la conserve sur son appareil.")) {
         db.collection("observations").doc(id).delete().then(function () { $("dlg-detail").close(); toast("Observation retirée du fil."); }, cloudErr);
