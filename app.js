@@ -1,6 +1,7 @@
-/* Carnet d'affût v2 — observations naturalistes partagées avec une liste d'abonnés.
-   Nouveautés : photo par appareil photo ou galerie, choix du mode (local / en ligne) dans l'application,
-   synchronisation totale ou observation par observation, photos libres dans le glossaire. */
+/* Carnet d'affût v3 — observations naturalistes partagées avec une liste d'abonnés.
+   Trois langues : français, allemand, anglais (textes dans i18n.js, espèces dans glossaire.js).
+   Photo par appareil photo ou galerie · mode local ou en ligne · synchronisation au choix
+   · position des espèces sensibles jamais publiée · j'aime · caméras autonomes. */
 (function () {
   "use strict";
 
@@ -13,89 +14,118 @@
   }
   function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-  function nowLocal() {
-    var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 16);
-  }
-  function fmtDate(iso) {
-    if (!iso) return "";
-    var d = new Date(iso);
-    if (isNaN(d)) return iso;
-    return d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long", year: "numeric" }) +
-      " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  }
-  function shortDate(iso) {
-    var d = new Date(iso);
-    return isNaN(d) ? String(iso || "") : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-  }
-  var toastTimer;
-  function toast(msg) {
-    var t = $("toast"); t.textContent = msg; t.style.display = "block";
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.style.display = "none"; }, 3800);
-  }
   var LS = {
     get: function (k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } },
     set: function (k, v) {
       try { localStorage.setItem(k, JSON.stringify(v)); return true; }
-      catch (e) { toast("Stockage de l'appareil plein : exportez vos données puis supprimez des photos."); return false; }
+      catch (e) { toast(t("t_storage_full")); return false; }
     }
   };
-  function plural(n, word) { return n + " " + word + (n > 1 ? "s" : ""); }
+
+  /* ---------- langue ---------- */
+  var I18N = window.I18N || {};
+  function pickLang() {
+    var saved = LS.get("carnet.lang", null);
+    if (saved && I18N[saved]) return saved;
+    var nav = (navigator.languages && navigator.languages[0]) || navigator.language || "fr";
+    var code = String(nav).slice(0, 2).toLowerCase();
+    return I18N[code] ? code : "fr";
+  }
+  var LANG = pickLang();
+  var L10N = I18N[LANG] || I18N.fr;
+  var DICT = Object.assign({}, (I18N.fr || {}).s, L10N.s);
+  function t(k, a, b) {
+    var v = DICT[k];
+    if (v == null) return k;
+    return typeof v === "function" ? v(a, b) : v;
+  }
+  function tcat(k) { return L10N.cats[k] || I18N.fr.cats[k] || k; }
+  function tst(k) { return L10N.st[k] || I18N.fr.st[k] || k; }
+  function monthsLabel(m) { return m ? " (" + L10N.months[m[0] - 1] + "–" + L10N.months[m[1] - 1] + ")" : ""; }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d)) return String(iso);
+    return d.toLocaleString(L10N.locale, { weekday: "short", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  function shortDate(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? String(iso || "") : d.toLocaleDateString(L10N.locale, { day: "numeric", month: "short", year: "numeric" });
+  }
+  function nowLocal() {
+    var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  }
+  var toastTimer;
+  function toast(msg) {
+    var el = $("toast"); el.textContent = msg; el.style.display = "block";
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.style.display = "none"; }, 3800);
+  }
 
   /* ---------- configuration et mode ---------- */
   var CFG = window.CARNET_CONFIG || {};
-  var ONLINE_OK = !!(CFG.firebase && CFG.firebase.apiKey);   // Firebase renseigné dans config.js
+  var ONLINE_OK = !!(CFG.firebase && CFG.firebase.apiKey);
   var MODE = ONLINE_OK ? (LS.get("carnet.mode", null) || "online") : "local";
   var CLOUD = MODE === "online";
   var G = window.GLOSSAIRE || { oiseaux: [], mammiferes: [] };
-  var CENTER = [49.6, 6.4]; // centre de la Grande Région
+  var CENTER = [49.6, 6.4];  // centre de la Grande Région
 
-  var SPECIES = [];
-  [["oiseaux", "Oiseau"], ["mammiferes", "Mammifère"]].forEach(function (g) {
-    G[g[0]].forEach(function (s) {
-      SPECIES.push({ name: s[0], sci: s[1], cat: s[2], statut: s[3], habitat: s[4], note: s[5], sensible: !!s[6], group: g[0], groupLabel: g[1] });
+  /* Espèces dans la langue choisie ; les trois langues restent reconnues à la lecture. */
+  var LI = { fr: 5, de: 6, en: 7 }[LANG] || 5;
+  var SPECIES = [], BY_NAME = {};
+  ["oiseaux", "mammiferes"].forEach(function (g) {
+    G[g].forEach(function (r) {
+      var loc = r[LI] || r[5];
+      SPECIES.push({
+        sci: r[0], group: g, cat: r[1], catLabel: tcat(r[1]), sensible: !!r[4],
+        name: loc[0], habitat: loc[1], note: loc[2], statut: tst(r[2]) + monthsLabel(r[3])
+      });
     });
   });
-  var BY_NAME = {};
-  SPECIES.forEach(function (s) { BY_NAME[s.name.toLowerCase()] = s; });
+  SPECIES.forEach(function (s) { BY_NAME[norm(s.sci)] = s; BY_NAME[norm(s.name)] = s; });
+  ["oiseaux", "mammiferes"].forEach(function (g) {          // noms des autres langues
+    G[g].forEach(function (r) {
+      var sp = BY_NAME[norm(r[0])];
+      if (sp) [5, 6, 7].forEach(function (i) { if (r[i] && !BY_NAME[norm(r[i][0])]) BY_NAME[norm(r[i][0])] = sp; });
+    });
+  });
+  function findSpecies(o) { return BY_NAME[norm(o.sci || "")] || BY_NAME[norm(o.species || "")]; }
+  function obsSpecies(o) { var sp = findSpecies(o); return sp ? sp.name : (o.species || ""); }
 
   var state = {
-    mine: [],                         // mes observations, toujours enregistrées sur cet appareil
-    others: [],                       // observations publiées en ligne par les autres membres
-    subs: [],
+    mine: [], others: [], subs: [], likes: {},
     user: null, me: null,
-    role: CLOUD ? "guest" : "owner",  // owner | subscriber | pending | guest
+    role: CLOUD ? "guest" : "owner",
     loading: CLOUD,
     q: "", gq: "", ggroup: "tous",
     form: null,
-    syncPolicy: LS.get("carnet.sync", "choose"),  // "all" = tout synchroniser, "choose" = au choix
-    sel: {},                          // sélection en cours dans l'écran de synchronisation
-    likes: {},                        // j'aime du fil en ligne, par observation
-    who: "all",                       // filtre de la liste en ligne : all | mine | others
-    kind: "all"                       // filtre par nature : all | obs | camera
+    syncPolicy: LS.get("carnet.sync", "choose"),
+    sel: {}, who: "all", kind: "all"
   };
   var db = null, auth = null, unsub = [], pendingName = "";
   var maps = {};
 
   function isOwner() { return state.role === "owner"; }
   function canRead() { return state.role === "owner" || state.role === "subscriber"; }
+  function isCam(o) { return o.kind === "camera"; }
+  function camName(o) { return o.species || t("pill_camera"); }
+  function title(o) { return isCam(o) ? camName(o) : obsSpecies(o); }
   function myUid() { return state.user ? state.user.uid : null; }
-  /* Mon carnet : en ligne, on écarte ce qu'un autre compte aurait enregistré sur le même appareil. */
   function myList() {
     if (!CLOUD) return state.mine;
     var u = myUid();
     return state.mine.filter(function (o) { return !o.authorUid || o.authorUid === u; });
   }
+  function syncables() { return myList().filter(function (o) { return !isCam(o); }); }
   function obsList() {
     if (!canRead()) return [];
     return CLOUD ? myList().concat(state.others).sort(byDateDesc) : state.mine;
   }
-  function isCam(o) { return o.kind === "camera"; }
-  function camName(o) { return o.species || "Caméra"; }
-  /* Espèce sensible : marquée dans le glossaire, ou cochée par l'auteur de l'observation. */
+  function findObs(id) { return obsList().filter(function (x) { return x.id === id; })[0]; }
   function isSensitive(o) {
     if (isCam(o)) return false;
-    var sp = BY_NAME[(o.species || "").toLowerCase()];
+    var sp = findSpecies(o);
     return !!(o.hideLoc || o.locHidden || (sp && sp.sensible));
   }
   function authorName() {
@@ -103,7 +133,6 @@
     if (isOwner()) return CFG.auteur || mail;
     return (state.me && state.me.name) || mail;
   }
-  function findObs(id) { return obsList().filter(function (x) { return x.id === id; })[0]; }
   function hasCoords(o) { return typeof o.lat === "number" && typeof o.lng === "number" && !isNaN(o.lat) && !isNaN(o.lng); }
   function osmLink(o) {
     return "https://www.openstreetmap.org/?mlat=" + o.lat.toFixed(5) + "&mlon=" + o.lng.toFixed(5) +
@@ -131,7 +160,7 @@
     });
   }
   function localLoad() {
-    var old = LS.get("carnet.obs", []);   // données de la version 1
+    var old = LS.get("carnet.obs", []);
     return idbOpen().then(function (d) {
       idb = d;
       if (!idb) { state.mine = old; return; }
@@ -165,9 +194,9 @@
   }
 
   /* ---------- synchronisation en ligne ---------- */
-  function cloudOwner() { return CLOUD && canRead() && !!db; }   // auteur ou abonné accepté, connecté
-  function cloudErr(e) { console.error(e); toast("Synchronisation impossible : vérifiez la connexion et vos droits."); }
-  /* Ce qui part en ligne. La position GPS d'une espèce sensible ne quitte jamais l'appareil ; le nom du lieu est publié. */
+  function cloudOwner() { return CLOUD && canRead() && !!db; }
+  function cloudErr(e) { console.error(e); toast(t("t_cloud_fail")); }
+  /* Ce qui part en ligne. La position GPS d'une espèce sensible ne quitte jamais l'appareil. */
   function cloudData(o) {
     var d = Object.assign({}, o); delete d.id; delete d.synced; delete d.other;
     d.authorUid = myUid(); d.authorName = authorName();
@@ -185,7 +214,6 @@
     o.synced = false;
     return upsertMine(o).then(function () { db.collection("observations").doc(o.id).delete().catch(cloudErr); });
   }
-  function syncables() { return myList().filter(function (o) { return !isCam(o); }); }
   function syncAll() {
     var todo = syncables().filter(function (o) { return !o.synced; });
     return Promise.all(todo.map(publish)).then(function () { return todo.length; });
@@ -206,7 +234,7 @@
       if (!o || o.other) return Promise.resolve();
       state.mine = state.mine.filter(function (x) { return x.id !== id; });
       return localDel(id).then(function () {
-        if (cloudOwner() && o && o.synced) db.collection("observations").doc(id).delete().catch(cloudErr);
+        if (cloudOwner() && o.synced) db.collection("observations").doc(id).delete().catch(cloudErr);
       });
     },
     addSub: function (s) {
@@ -245,7 +273,7 @@
       })
       .catch(function (e) {
         state.loading = false; render();
-        toast("Service en ligne injoignable. Vous pouvez repasser en mode local dans Réglages.");
+        toast(t("t_cloud_unreachable"));
         console.error(e);
       });
   }
@@ -257,15 +285,15 @@
     var fresh = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
     snap.docs.forEach(function (d) {
       var x = Object.assign({ id: d.id }, d.data());
-      if (x.authorUid === u || (isOwner() && !x.authorUid)) cloud[d.id] = x;   // sans auteur : publiée par l'auteur du carnet en version 2
+      if (x.authorUid === u || (isOwner() && !x.authorUid)) cloud[d.id] = x;
       else { x.other = true; others.push(x); }
     });
     state.others = others.sort(byDateDesc);
     state.mine = state.mine.map(function (o) {
-      if (o.authorUid && o.authorUid !== u) return o;      // carnet d'un autre compte sur cet appareil
+      if (o.authorUid && o.authorUid !== u) return o;
       have[o.id] = 1;
       var c = cloud[o.id];
-      if (c && (c.updatedAt || 0) > (o.updatedAt || 0)) {  // modifiée sur un autre appareil
+      if (c && (c.updatedAt || 0) > (o.updatedAt || 0)) {
         if (c.locHidden) { c.lat = o.lat; c.lng = o.lng; }   // la position masquée n'existe qu'en local
         c.synced = true; c.authorUid = u; jobs.push(c); return c;
       }
@@ -274,7 +302,7 @@
       if (c && fresh && ((isSensitive(o) && (c.lat != null || !c.locHidden)) || (o.place && !c.place) || !c.authorUid)) pushCloud(o);
       return o;
     });
-    Object.keys(cloud).forEach(function (id) {             // présente en ligne, absente ici (nouvel appareil)
+    Object.keys(cloud).forEach(function (id) {
       if (!have[id]) { cloud[id].synced = true; cloud[id].authorUid = u; state.mine.push(cloud[id]); jobs.push(cloud[id]); }
     });
     state.mine.sort(byDateDesc);
@@ -285,7 +313,7 @@
   function startFeed() {
     startLikes();
     unsub.push(db.collection("observations").onSnapshot({ includeMetadataChanges: true }, onFeedSnapshot,
-      function (e) { console.error(e); toast("Lecture du fil en ligne refusée."); }));
+      function (e) { console.error(e); toast(t("t_read_denied")); }));
   }
   function onAuth(user) {
     stopListeners();
@@ -320,17 +348,70 @@
     });
   }
   var AUTH_ERR = {
-    "auth/invalid-credential": "E-mail ou mot de passe incorrect.",
-    "auth/wrong-password": "E-mail ou mot de passe incorrect.",
-    "auth/user-not-found": "Aucun compte avec cet e-mail.",
-    "auth/email-already-in-use": "Un compte existe déjà avec cet e-mail : connectez-vous.",
-    "auth/weak-password": "Mot de passe trop court (6 caractères minimum).",
-    "auth/invalid-email": "Adresse e-mail invalide.",
-    "auth/network-request-failed": "Pas de réseau."
+    "auth/invalid-credential": "err_credential", "auth/wrong-password": "err_credential",
+    "auth/user-not-found": "err_nouser", "auth/email-already-in-use": "err_inuse",
+    "auth/weak-password": "err_weak", "auth/invalid-email": "err_email", "auth/network-request-failed": "err_network"
   };
+  function authErr(e) { return t(AUTH_ERR[e && e.code] || "err_signin"); }
+
+  /* ---------- j'aime (mode en ligne) ----------
+     Un document par personne et par observation, nommé <idObservation>__<uid>. */
+  function likesOf(id) { return state.likes[id] || []; }
+  function iLike(id) {
+    var u = myUid();
+    return likesOf(id).some(function (l) { return l.uid === u; });
+  }
+  function canLike(o) { return CLOUD && canRead() && !isCam(o) && (o.other || o.synced); }
+  function startLikes() {
+    unsub.push(db.collection("likes").onSnapshot(function (snap) {
+      var m = {};
+      snap.docs.forEach(function (d) {
+        var l = d.data();
+        if (l && l.obsId) (m[l.obsId] = m[l.obsId] || []).push(l);
+      });
+      state.likes = m; paintLikes();
+    }, function (e) { console.error(e); }));
+  }
+  function toggleLike(id) {
+    if (!cloudOwner()) return;
+    var ref = db.collection("likes").doc(id + "__" + myUid());
+    if (iLike(id)) ref.delete().catch(function () { toast(t("t_unlike_fail")); });
+    else ref.set({ obsId: id, uid: myUid(), name: authorName(), createdAt: Date.now() })
+      .catch(function () { toast(t("t_like_fail")); });
+  }
+  var HEART = '<path d="M12 20.4C12 20.4 3.8 14.9 3.8 9.2 3.8 6.4 6 4.4 8.4 4.4 10 4.4 11.4 5.3 12 6.5 12.6 5.3 14 4.4 15.6 4.4 18 4.4 20.2 6.4 20.2 9.2 20.2 14.9 12 20.4 12 20.4Z"/>';
+  function likeInnerHTML(o) {
+    var n = likesOf(o.id).length, on = iLike(o.id);
+    var icon = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="' + (on ? "currentColor" : "none") +
+      '" stroke="currentColor" stroke-width="2">' + HEART + '</svg><span class="n">' + n + '</span>';
+    if (!o.other) return '<span class="like static">' + icon + '</span>';
+    return '<button class="like' + (on ? " on" : "") + '" data-act="like" data-id="' + esc(o.id) + '" aria-pressed="' + on +
+      '" aria-label="' + esc(on ? t("like_on") : t("like_off")) + '">' + icon + '</button>';
+  }
+  function likeBarHTML(o) {
+    return canLike(o) ? '<span class="likebar" data-like-for="' + esc(o.id) + '">' + likeInnerHTML(o) + '</span>' : "";
+  }
+  function likersHTML(id) {
+    var u = myUid(), names = likesOf(id).map(function (l) { return l.uid === u ? t("you") : (l.name || t("a_member")); });
+    if (!names.length) return "";
+    var head = names.slice(0, 3), rest = names.length - head.length;
+    if (rest > 0) return t("likers", head.join(", ") + " + " + t("n_others", rest));
+    return t("likers", head.join(", "));
+  }
+  /* Mise à jour ciblée : un j'aime ne doit pas redessiner la carte ni refermer la fiche ouverte. */
+  function paintLikes() {
+    document.querySelectorAll("[data-like-for]").forEach(function (el) {
+      var o = findObs(el.getAttribute("data-like-for"));
+      if (o) el.innerHTML = likeInnerHTML(o);
+    });
+    document.querySelectorAll("[data-likers-for]").forEach(function (el) {
+      el.innerHTML = esc(likersHTML(el.getAttribute("data-likers-for")));
+    });
+  }
 
   /* ---------- photos du glossaire (Wikimedia Commons, licences libres) ---------- */
-  var GP = LS.get("carnet.gphotos", null) || { at: 0, items: {} };
+  var GPKEY = "carnet.gphotos." + LANG;
+  var GP = LS.get(GPKEY, null) || { at: 0, items: {} };
   var gpBusy = false;
   function wikiApi(host, params) {
     return fetch("https://" + host + "/w/api.php?action=query&format=json&formatversion=2&origin=*&" + params)
@@ -340,28 +421,26 @@
   function hopMap(q) {
     var hop = {};
     (q.normalized || []).concat(q.redirects || []).forEach(function (x) { hop[x.from] = x.to; });
-    return function (t) { var k = t, n = 0; while (hop[k] && n++ < 6) k = hop[k]; return k; };
+    return function (tt) { var k = tt, n = 0; while (hop[k] && n++ < 6) k = hop[k]; return k; };
   }
   function plainText(html) {
     try { return (new DOMParser().parseFromString(String(html || ""), "text/html").body.textContent || "").replace(/\s+/g, " ").trim().slice(0, 70); }
     catch (e) { return ""; }
   }
-  /* titres d'articles -> { titre: { file, thumb } } : image principale libre de l'article Wikipédia */
   function wikiImages(titles) {
     return Promise.all(chunks(titles, 50).map(function (c) {
-      return wikiApi("fr.wikipedia.org", "redirects=1&prop=pageimages&piprop=name%7Cthumbnail&pithumbsize=640&pilicense=free&titles=" +
+      return wikiApi(LANG + ".wikipedia.org", "redirects=1&prop=pageimages&piprop=name%7Cthumbnail&pithumbsize=640&pilicense=free&titles=" +
         encodeURIComponent(c.join("|"))).then(function (j) {
         var q = j.query || {}, end = hopMap(q), pages = {}, out = {};
         (q.pages || []).forEach(function (p) { pages[p.title] = p; });
-        c.forEach(function (t) {
-          var p = pages[end(t)];
-          if (p && p.pageimage && p.thumbnail && p.thumbnail.source) out[t] = { file: p.pageimage, thumb: p.thumbnail.source };
+        c.forEach(function (tt) {
+          var p = pages[end(tt)];
+          if (p && p.pageimage && p.thumbnail && p.thumbnail.source) out[tt] = { file: p.pageimage, thumb: p.thumbnail.source };
         });
         return out;
       });
     })).then(function (parts) { return Object.assign.apply(Object, [{}].concat(parts)); });
   }
-  /* noms de fichiers -> { fichier: { a: auteur, l: licence, u: page Commons } } */
   function commonsCredits(files) {
     return Promise.all(chunks(files, 50).map(function (c) {
       var titles = c.map(function (f) { return "File:" + f; });
@@ -372,7 +451,7 @@
         c.forEach(function (f) {
           var p = pages[end("File:" + f)], ii = p && p.imageinfo && p.imageinfo[0], m = ii && ii.extmetadata;
           if (m && m.LicenseShortName && m.LicenseShortName.value) {
-            out[f] = { a: plainText(m.Artist && m.Artist.value) || "auteur indiqué sur Commons", l: plainText(m.LicenseShortName.value), u: ii.descriptionurl || "" };
+            out[f] = { a: plainText(m.Artist && m.Artist.value) || t("photo_unknown_author"), l: plainText(m.LicenseShortName.value), u: ii.descriptionurl || "" };
           }
         });
         return out;
@@ -388,7 +467,7 @@
     var found = {};
     wikiImages(todo.map(function (s) { return s.sci; })).then(function (bySci) {
       todo.forEach(function (s) { if (bySci[s.sci]) found[s.sci] = bySci[s.sci]; });
-      var rest = todo.filter(function (s) { return !found[s.sci]; });   // repli : article au nom français
+      var rest = todo.filter(function (s) { return !found[s.sci]; });   // repli : article au nom courant
       if (!rest.length) return;
       return wikiImages(rest.map(function (s) { return s.name; })).then(function (byName) {
         rest.forEach(function (s) { if (byName[s.name]) found[s.sci] = byName[s.name]; });
@@ -399,10 +478,9 @@
     }).then(function (cred) {
       todo.forEach(function (s) {
         var f = found[s.sci], c = f && cred[f.file];
-        // Une photo n'est affichée que si sa licence a pu être lue.
-        GP.items[s.sci] = c ? { t: f.thumb, a: c.a, l: c.l, u: c.u } : 0;
+        GP.items[s.sci] = c ? { t: f.thumb, a: c.a, l: c.l, u: c.u } : 0;   // sans licence lisible, pas de photo
       });
-      GP.at = Date.now(); LS.set("carnet.gphotos", GP);
+      GP.at = Date.now(); LS.set(GPKEY, GP);
       if (route() === "glossaire" && $("gloss-list")) $("gloss-list").innerHTML = glossListHTML();
     }).catch(function (e) { console.warn("Photos du glossaire indisponibles", e); })
       .then(function () { gpBusy = false; });
@@ -411,92 +489,38 @@
     var p = GP.items[s.sci];
     if (!p || !p.t) return "";
     return '<figure class="gph"><img class="gimg" loading="lazy" crossorigin="anonymous" alt="' + esc(s.name) + '" src="' + esc(p.t) + '">' +
-      '<figcaption>Photo : ' + esc(p.a) + ' · ' + esc(p.l) +
-      (p.u ? ' · <a href="' + esc(p.u) + '" target="_blank" rel="noopener">Wikimedia Commons</a>' : "") + '</figcaption></figure>';
+      '<figcaption>' + esc(t("photo_credit", p.a, p.l)) +
+      (p.u ? ' · <a href="' + esc(p.u) + '" target="_blank" rel="noopener">' + esc(t("commons")) + '</a>' : "") + '</figcaption></figure>';
   }
-  document.addEventListener("error", function (e) {   // image refusée : second essai sans CORS, sinon on masque
+  document.addEventListener("error", function (e) {
     var img = e.target;
     if (!img || !img.classList || !img.classList.contains("gimg")) return;
     if (img.hasAttribute("crossorigin")) { var src = img.src; img.removeAttribute("crossorigin"); img.src = ""; img.src = src; }
     else if (img.parentNode) img.parentNode.style.display = "none";
   }, true);
 
-  /* ---------- j'aime (mode en ligne) ----------
-     Un document par personne et par observation, nommé <idObservation>__<uid>,
-     pour que chacun n'écrive que son propre j'aime sans toucher à l'observation. */
-  function likesOf(id) { return state.likes[id] || []; }
-  function iLike(id) {
-    var u = myUid();
-    return likesOf(id).some(function (l) { return l.uid === u; });
-  }
-  function canLike(o) { return CLOUD && canRead() && (o.other || o.synced); }
-  function startLikes() {
-    unsub.push(db.collection("likes").onSnapshot(function (snap) {
-      var m = {};
-      snap.docs.forEach(function (d) {
-        var l = d.data();
-        if (l && l.obsId) (m[l.obsId] = m[l.obsId] || []).push(l);
-      });
-      state.likes = m; paintLikes();
-    }, function (e) { console.error(e); }));
-  }
-  function toggleLike(id) {
-    if (!cloudOwner()) return;
-    var ref = db.collection("likes").doc(id + "__" + myUid());
-    if (iLike(id)) ref.delete().catch(function () { toast("Impossible de retirer le j'aime."); });
-    else ref.set({ obsId: id, uid: myUid(), name: authorName(), createdAt: Date.now() })
-      .catch(function () { toast("Impossible d'envoyer le j'aime."); });
-  }
-  var HEART = '<path d="M12 20.4C12 20.4 3.8 14.9 3.8 9.2 3.8 6.4 6 4.4 8.4 4.4 10 4.4 11.4 5.3 12 6.5 12.6 5.3 14 4.4 15.6 4.4 18 4.4 20.2 6.4 20.2 9.2 20.2 14.9 12 20.4 12 20.4Z"/>';
-  function likeInnerHTML(o) {
-    var n = likesOf(o.id).length, on = iLike(o.id);
-    var icon = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="' + (on ? "currentColor" : "none") +
-      '" stroke="currentColor" stroke-width="2">' + HEART + '</svg><span class="n">' + n + '</span>';
-    if (!o.other) return '<span class="like static">' + icon + '<span class="sr">' + n + " j'aime</span></span>";
-    return '<button class="like' + (on ? " on" : "") + '" data-act="like" data-id="' + esc(o.id) + '" aria-pressed="' + on +
-      '" aria-label="' + (on ? "Retirer mon j'aime" : "J'aime cette observation") + '">' + icon + '</button>';
-  }
-  function likeBarHTML(o) {
-    return canLike(o) ? '<span class="likebar" data-like-for="' + esc(o.id) + '">' + likeInnerHTML(o) + '</span>' : "";
-  }
-  function likersHTML(id) {
-    var u = myUid(), names = likesOf(id).map(function (l) { return l.uid === u ? "vous" : (l.name || "un membre"); });
-    if (!names.length) return "";
-    var head = names.slice(0, 3), rest = names.length - head.length;
-    if (rest > 0) return "Aimée par " + head.join(", ") + " et " + rest + " autre" + (rest > 1 ? "s" : "");
-    return "Aimée par " + (head.length > 1 ? head.slice(0, -1).join(", ") + " et " + head[head.length - 1] : head[0]);
-  }
-  /* Mise à jour ciblée : un j'aime ne doit pas redessiner la carte ni refermer la fiche ouverte. */
-  function paintLikes() {
-    document.querySelectorAll("[data-like-for]").forEach(function (el) {
-      var o = findObs(el.getAttribute("data-like-for"));
-      if (o) el.innerHTML = likeInnerHTML(o);
-    });
-    document.querySelectorAll("[data-likers-for]").forEach(function (el) {
-      el.innerHTML = esc(likersHTML(el.getAttribute("data-likers-for")));
-    });
-  }
-
   /* ---------- texte de partage ---------- */
   function obsText(o) {
+    var lines;
     if (isCam(o)) {
-      var C = [camName(o) + " (caméra autonome)", "Posée le " + fmtDate(o.date)];
-      if (o.place) C.push("Emplacement : " + o.place);
-      if (hasCoords(o)) { C.push("GPS : " + o.lat.toFixed(5) + ", " + o.lng.toFixed(5)); C.push("Carte : " + osmLink(o)); }
-      if (o.notes) { C.push(""); C.push(o.notes); }
-      return C.join("\n");
+      lines = [t("sh_camera", camName(o)), t("sh_posted", fmtDate(o.date))];
+      if (o.place) lines.push(t("location_label") + " " + o.place);
+      if (hasCoords(o)) { lines.push(t("sh_gps") + " " + o.lat.toFixed(5) + ", " + o.lng.toFixed(5)); lines.push(t("sh_map") + " " + osmLink(o)); }
+      if (o.notes) { lines.push(""); lines.push(o.notes); }
+      return lines.join("\n");
     }
-    var L = [o.species + (o.sci ? " (" + o.sci + ")" : "")];
-    L.push(fmtDate(o.date) + (o.count > 1 ? " · " + o.count + " individus" : ""));
-    if (o.place) L.push("Lieu : " + o.place);
-    if (CLOUD && isSensitive(o)) L.push("Position GPS non communiquée (espèce sensible au dérangement)");
-    else {
-      if (hasCoords(o)) { L.push("GPS : " + o.lat.toFixed(5) + ", " + o.lng.toFixed(5)); L.push("Carte : " + osmLink(o)); }
+    lines = [obsSpecies(o) + (o.sci ? " (" + o.sci + ")" : "")];
+    lines.push(fmtDate(o.date) + (o.count > 1 ? " · " + t("sh_individuals", o.count) : ""));
+    if (o.place) lines.push(t("place_label") + " " + o.place);
+    if (CLOUD && isSensitive(o)) lines.push(t("sh_gps_hidden"));
+    else if (hasCoords(o)) {
+      lines.push(t("sh_gps") + " " + o.lat.toFixed(5) + ", " + o.lng.toFixed(5));
+      lines.push(t("sh_map") + " " + osmLink(o));
     }
-    if (o.notes) { L.push(""); L.push(o.notes); }
+    if (o.notes) { lines.push(""); lines.push(o.notes); }
     var by = o.other ? (o.authorName || CFG.auteur) : (CLOUD ? authorName() : CFG.auteur);
-    if (by) { L.push(""); L.push("— " + by); }
-    return L.join("\n");
+    if (by) { lines.push(""); lines.push("— " + by); }
+    return lines.join("\n");
   }
   function subscriberEmails() {
     return state.subs.filter(function (s) { return s.email && (!CLOUD || s.approved !== false); })
@@ -504,9 +528,9 @@
   }
   function copy(text, okMsg) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { toast(okMsg || "Copié."); },
-        function () { toast("Copie impossible sur cet appareil."); });
-    } else { toast("Copie impossible sur cet appareil."); }
+      navigator.clipboard.writeText(text).then(function () { toast(okMsg || t("t_copied")); },
+        function () { toast(t("t_copy_fail")); });
+    } else { toast(t("t_copy_fail")); }
   }
 
   /* ---------- vues ---------- */
@@ -514,34 +538,35 @@
   function route() { var h = location.hash.slice(1); return VIEWS.indexOf(h) >= 0 ? h : "observations"; }
 
   function gateHTML() {
-    if (state.loading) return '<p class="empty">Connexion…</p>';
+    if (state.loading) return '<p class="empty">' + esc(t("loading")) + '</p>';
     if (state.role === "guest") return authHTML();
     if (state.role === "pending") {
-      return '<div class="card"><h2>Abonnement en attente</h2>' +
+      return '<div class="card"><h2>' + esc(t("pending_title")) + '</h2>' +
         (state.me
-          ? '<p>Votre demande est enregistrée. Les observations s\'afficheront dès que ' + esc(CFG.auteur || "l'auteur") + ' l\'aura validée.</p>'
-          : '<p>Ce compte n\'est pas encore abonné.</p><div><button class="btn primary" data-act="ask-sub">Demander l\'abonnement</button></div>') +
-        '<p class="meta">Connecté : ' + esc(state.user.email) + '</p>' +
-        '<div><button class="btn small" data-act="signout">Se déconnecter</button></div></div>' +
-        '<p class="meta">Le glossaire reste consultable sans abonnement.</p>';
+          ? '<p>' + esc(t("pending_text", CFG.auteur || t("the_author"))) + '</p>'
+          : '<p>' + esc(t("pending_none")) + '</p><div><button class="btn primary" data-act="ask-sub">' + esc(t("ask_sub")) + '</button></div>') +
+        '<p class="meta">' + esc(t("connected_as", state.user.email)) + '</p>' +
+        '<div><button class="btn small" data-act="signout">' + esc(t("signout")) + '</button></div></div>' +
+        '<p class="meta">' + esc(t("gloss_still_open")) + '</p>';
     }
     return "";
   }
   function authHTML() {
-    return '<div class="card"><h2>' + esc(CFG.auteur ? "Les observations de " + CFG.auteur : "Observations réservées aux abonnés") + '</h2>' +
-      '<p class="meta">Connectez-vous, ou créez un compte pour demander l\'abonnement. Une fois accepté, vous suivez le fil et pouvez y publier vos propres observations.</p>' +
+    return '<div class="card"><h2>' + esc(CFG.auteur ? t("auth_title", CFG.auteur) : t("auth_title_generic")) + '</h2>' +
+      '<p class="meta">' + esc(t("auth_intro")) + '</p>' +
       '<form id="auth-form">' +
-      '<label for="au-email">E-mail<input id="au-email" type="email" autocomplete="email" required></label>' +
-      '<label for="au-pass">Mot de passe<input id="au-pass" type="password" autocomplete="current-password" minlength="6" required></label>' +
-      '<label for="au-name">Votre nom (pour une première inscription)<input id="au-name" type="text" autocomplete="name"></label>' +
-      '<div class="row"><button class="btn primary" type="submit" data-mode="in">Se connecter</button>' +
-      '<button class="btn" type="submit" data-mode="up">Créer un compte</button></div>' +
-      '<div><button class="btn small" type="button" data-act="reset-pass">Mot de passe oublié</button></div>' +
+      '<label for="au-email">' + esc(t("email")) + '<input id="au-email" type="email" autocomplete="email" required></label>' +
+      '<label for="au-pass">' + esc(t("password")) + '<input id="au-pass" type="password" autocomplete="current-password" minlength="6" required></label>' +
+      '<label for="au-name">' + esc(t("first_name_hint")) + '<input id="au-name" type="text" autocomplete="name"></label>' +
+      '<div class="row"><button class="btn primary" type="submit" data-mode="in">' + esc(t("signin")) + '</button>' +
+      '<button class="btn" type="submit" data-mode="up">' + esc(t("signup")) + '</button></div>' +
+      '<div><button class="btn small" type="button" data-act="reset-pass">' + esc(t("forgot")) + '</button></div>' +
       '</form></div>';
   }
   function syncPill(o) {
-    if (!CLOUD || o.other) return "";
-    return o.synced ? ' <span class="pill ok">En ligne</span>' : ' <span class="pill">Local</span>';
+    if (!CLOUD || o.other || isCam(o)) return "";
+    return o.synced ? ' <span class="pill ok">' + esc(t("pill_online")) + '</span>'
+      : ' <span class="pill">' + esc(t("pill_local")) + '</span>';
   }
 
   function filteredObs() {
@@ -549,188 +574,195 @@
     if (CLOUD && state.who !== "all") all = all.filter(function (o) { return (state.who === "others") === !!o.other; });
     if (state.kind !== "all") all = all.filter(function (o) { return (state.kind === "camera") === isCam(o); });
     if (!q) return all;
-    return all.filter(function (o) { return norm([o.species, o.sci, o.place, o.notes].join(" ")).indexOf(q) >= 0; });
+    return all.filter(function (o) { return norm([title(o), o.sci, o.place, o.notes].join(" ")).indexOf(q) >= 0; });
   }
   function obsListHTML() {
     var list = filteredObs();
-    if (!obsList().length) {
-      return '<p class="empty">Aucune observation pour l\'instant. Notez la première avec le bouton ci-dessous.</p>';
-    }
-    if (!list.length) return '<p class="empty">Aucune observation ne correspond à cette recherche.</p>';
+    if (!obsList().length) return '<p class="empty">' + esc(t("empty_obs")) + '</p>';
+    if (!list.length) return '<p class="empty">' + esc(t("empty_search")) + '</p>';
     return list.map(function (o) {
+      var coords = hasCoords(o) ? o.lat.toFixed(4) + ", " + o.lng.toFixed(4) : t("place_unknown");
       if (isCam(o)) {
         return '<div class="card obs"><button class="main" data-act="open" data-id="' + esc(o.id) + '"><span class="row">' +
           (o.photo ? '<img class="thumb" alt="" src="' + esc(o.photo) + '">' : "") +
           '<span class="grow"><h3>' + esc(camName(o)) + '</h3>' +
-          '<span class="meta">Posée le ' + esc(shortDate(o.date)) + '</span><br>' +
-          '<span class="meta">' + esc(o.place || (hasCoords(o) ? o.lat.toFixed(4) + ", " + o.lng.toFixed(4) : "Lieu non précisé")) + '</span>' +
-          ' <span class="pill cam">Caméra</span>' +
+          '<span class="meta">' + esc(t("posted_on", shortDate(o.date))) + '</span><br>' +
+          '<span class="meta">' + esc(o.place || coords) + '</span>' +
+          ' <span class="pill cam">' + esc(t("pill_camera")) + '</span>' +
           '</span></span></button></div>';
       }
-      var where = o.other && o.locHidden ? (o.place || "Lieu non précisé") + " · position GPS masquée"
-        : (o.place || (hasCoords(o) ? o.lat.toFixed(4) + ", " + o.lng.toFixed(4) : "Lieu non précisé"));
+      var where = o.other && o.locHidden ? (o.place || t("place_unknown")) + " · " + t("gps_hidden_short") : (o.place || coords);
       return '<div class="card obs"><button class="main" data-act="open" data-id="' + esc(o.id) + '"><span class="row">' +
         (o.photo ? '<img class="thumb" alt="" src="' + esc(o.photo) + '">' : "") +
-        '<span class="grow"><h3>' + esc(o.species) + (o.count > 1 ? " × " + esc(o.count) : "") + '</h3>' +
+        '<span class="grow"><h3>' + esc(obsSpecies(o)) + (o.count > 1 ? " × " + esc(o.count) : "") + '</h3>' +
         (o.sci ? '<em class="sci">' + esc(o.sci) + '</em><br>' : "") +
         '<span class="meta">' + esc(fmtDate(o.date)) + '</span><br>' +
-        '<span class="meta">' + esc(where) + (o.other ? " · par " + esc(o.authorName || CFG.auteur || "un membre") : "") + '</span>' +
-        (isSensitive(o) ? ' <span class="pill warn">Espèce sensible</span>' : "") + syncPill(o) +
+        '<span class="meta">' + esc(where) + (o.other ? " · " + esc(t("by_member", o.authorName || CFG.auteur || t("a_member"))) : "") + '</span>' +
+        (isSensitive(o) ? ' <span class="pill warn">' + esc(t("pill_sensitive")) + '</span>' : "") + syncPill(o) +
         '</span></span></button>' + likeBarHTML(o) + '</div>';
     }).join("");
+  }
+  function chipsHTML(act, cur, items) {
+    return '<div class="chips">' + items.map(function (c) {
+      return '<button class="chip" data-act="' + act + '" data-v="' + c[0] + '" aria-pressed="' + (cur === c[0]) + '">' + esc(c[1]) + '</button>';
+    }).join("") + '</div>';
   }
   function viewObservations() {
     var g = gateHTML(); if (g) return g;
     var all = obsList(), nSp = {}, nCam = 0;
-    all.forEach(function (o) { if (isCam(o)) nCam++; else nSp[norm(o.species)] = 1; });
-    return '<div class="row between"><h2>' + plural(all.length - nCam, "observation") + " · " + plural(Object.keys(nSp).length, "espèce") +
-      (nCam ? " · " + plural(nCam, "caméra") : "") + '</h2></div>' +
-      '<input id="q" type="search" placeholder="Chercher une espèce, un lieu…" aria-label="Chercher dans les observations" value="' + esc(state.q) + '">' +
-      (nCam ? '<div class="chips">' + [["all", "Tout"], ["obs", "Observations"], ["camera", "Caméras"]].map(function (c) {
-        return '<button class="chip" data-act="kind" data-v="' + c[0] + '" aria-pressed="' + (state.kind === c[0]) + '">' + c[1] + '</button>';
-      }).join("") + '</div>' : "") +
-      (CLOUD ? '<div class="chips">' + [["all", "Toutes"], ["mine", "Les miennes"], ["others", "Des autres membres"]].map(function (c) {
-        return '<button class="chip" data-act="who" data-v="' + c[0] + '" aria-pressed="' + (state.who === c[0]) + '">' + c[1] + '</button>';
-      }).join("") + '</div>' : "") +
+    all.forEach(function (o) { if (isCam(o)) nCam++; else nSp[norm(title(o))] = 1; });
+    return '<div class="row between"><h2>' + esc(t("n_obs", all.length - nCam)) + " · " + esc(t("n_species", Object.keys(nSp).length)) +
+      (nCam ? " · " + esc(t("n_cams", nCam)) : "") + '</h2></div>' +
+      '<input id="q" type="search" placeholder="' + esc(t("search_obs")) + '" aria-label="' + esc(t("search_obs_aria")) + '" value="' + esc(state.q) + '">' +
+      (nCam ? chipsHTML("kind", state.kind, [["all", t("kind_all")], ["obs", t("kind_obs")], ["camera", t("kind_cams")]]) : "") +
+      (CLOUD ? chipsHTML("who", state.who, [["all", t("who_all")], ["mine", t("who_mine")], ["others", t("who_others")]]) : "") +
       '<div id="obs-list" class="stack">' + obsListHTML() + '</div>' +
-      '<button class="btn primary fab" data-act="new">+ Observation</button>';
+      '<button class="btn primary fab" data-act="new">' + esc(t("fab_new")) + '</button>';
   }
 
   function viewCarte() {
     var g = gateHTML(); if (g) return g;
-    var n = obsList().filter(hasCoords).length;
-    if (state.kind !== "all") n = obsList().filter(function (o) { return hasCoords(o) && (state.kind === "camera") === isCam(o); }).length;
-    return '<p class="meta">' + plural(n, "observation") + ' sur la carte. Touchez une icône, puis « Voir le détail ».' +
-      (CLOUD ? " Les espèces sensibles publiées par les autres membres n'y figurent pas : leur position GPS n'est pas partagée." : "") + '</p>' +
-      '<div class="row legend">' + pinHTML("oiseaux", false) + '<span>Oiseau</span>' + pinHTML("mammiferes", false) + '<span>Mammifère</span>' +
-      pinHTML("autre", false) + '<span>Autre</span>' + pinHTML("camera", false) + '<span>Caméra</span>' +
-      pinHTML("oiseaux", true) + '<span>Espèce sensible</span></div>' +
+    var n = obsList().filter(function (o) {
+      return hasCoords(o) && (state.kind === "all" || (state.kind === "camera") === isCam(o));
+    }).length;
+    return '<p class="meta">' + esc(t("map_intro", n)) + (CLOUD ? esc(t("map_sensitive")) : "") + '</p>' +
+      '<div class="row legend">' + pinHTML("oiseaux", false) + '<span>' + esc(t("legend_bird")) + '</span>' +
+      pinHTML("mammiferes", false) + '<span>' + esc(t("legend_mammal")) + '</span>' +
+      pinHTML("autre", false) + '<span>' + esc(t("legend_other")) + '</span>' +
+      pinHTML("camera", false) + '<span>' + esc(t("legend_camera")) + '</span>' +
+      pinHTML("oiseaux", true) + '<span>' + esc(t("legend_sensitive")) + '</span></div>' +
       '<div id="map-all" class="map big"></div>';
   }
 
   function glossListHTML() {
     var q = norm(state.gq), counts = {};
-    obsList().forEach(function (o) { if (isCam(o)) return; var k = (o.species || "").toLowerCase(); counts[k] = (counts[k] || 0) + 1; });
+    obsList().forEach(function (o) {
+      if (isCam(o)) return;
+      var sp = findSpecies(o); if (!sp) return;
+      counts[sp.sci] = (counts[sp.sci] || 0) + 1;
+    });
     var list = SPECIES.filter(function (s) {
       if (state.ggroup !== "tous" && s.group !== state.ggroup) return false;
-      return !q || norm(s.name + " " + s.sci + " " + s.cat + " " + s.habitat).indexOf(q) >= 0;
+      return !q || norm(s.name + " " + s.sci + " " + s.catLabel + " " + s.habitat).indexOf(q) >= 0;
     });
-    if (!list.length) return '<p class="empty">Aucune espèce ne correspond. L\'observation d\'une espèce absente du glossaire reste possible en saisie libre.</p>';
+    if (!list.length) return '<p class="empty">' + esc(t("gloss_empty")) + '</p>';
     var out = "", cat = "";
     list.forEach(function (s) {
-      if (s.cat !== cat) { cat = s.cat; out += '<p class="cat">' + esc(cat) + '</p>'; }
-      var c = counts[s.name.toLowerCase()] || 0;
+      if (s.cat !== cat) { cat = s.cat; out += '<p class="cat">' + esc(s.catLabel) + '</p>'; }
+      var c = counts[s.sci] || 0;
       out += '<article class="card">' + glossPhotoHTML(s) +
         '<div class="row between"><h3>' + esc(s.name) + '</h3>' +
-        (c && canRead() ? '<span class="pill ok">' + c + " obs.</span>" : "") + '</div>' +
+        (c && canRead() ? '<span class="pill ok">' + esc(t("n_records", c)) + '</span>' : "") + '</div>' +
         '<em class="sci">' + esc(s.sci) + '</em>' +
         '<div class="row"><span class="pill">' + esc(s.statut) + '</span>' +
-        (s.sensible ? '<span class="pill warn">Sensible au dérangement</span>' : "") + '</div>' +
-        '<p><strong>Où :</strong> ' + esc(s.habitat) + '</p><p class="meta">' + esc(s.note) + '</p>' +
-        (canRead() ? '<div><button class="btn small" data-act="new" data-species="' + esc(s.name) + '">Noter une observation</button></div>' : "") +
+        (s.sensible ? '<span class="pill warn">' + esc(t("sensitive_badge")) + '</span>' : "") + '</div>' +
+        '<p><strong>' + esc(t("where")) + '</strong> ' + esc(s.habitat) + '</p><p class="meta">' + esc(s.note) + '</p>' +
+        (canRead() ? '<div><button class="btn small" data-act="new" data-species="' + esc(s.name) + '">' + esc(t("note_species")) + '</button></div>' : "") +
         '</article>';
     });
     return out;
   }
   function viewGlossaire() {
-    function chip(v, label) {
-      return '<button class="chip" data-act="ggroup" data-v="' + v + '" aria-pressed="' + (state.ggroup === v) + '">' + label + '</button>';
-    }
-    return '<h2>Oiseaux et mammifères de la Grande Région</h2>' +
-      '<p class="meta">' + G.oiseaux.length + " oiseaux et " + G.mammiferes.length +
-      ' mammifères parmi les plus observables au Luxembourg, en Lorraine, Wallonie, Sarre et Rhénanie-Palatinat. ' +
-      'Photos sous licence libre issues de Wikimedia Commons, auteur et licence indiqués sous chacune.</p>' +
-      '<input id="gq" type="search" placeholder="Chercher un nom, un milieu…" aria-label="Chercher dans le glossaire" value="' + esc(state.gq) + '">' +
-      '<div class="chips">' + chip("tous", "Tous") + chip("oiseaux", "Oiseaux") + chip("mammiferes", "Mammifères") + '</div>' +
+    return '<h2>' + esc(t("gloss_title")) + '</h2>' +
+      '<p class="meta">' + esc(t("gloss_intro", G.oiseaux.length, G.mammiferes.length)) + " " + esc(t("gloss_photos")) + '</p>' +
+      '<input id="gq" type="search" placeholder="' + esc(t("gloss_search")) + '" aria-label="' + esc(t("gloss_search_aria")) + '" value="' + esc(state.gq) + '">' +
+      chipsHTML("ggroup", state.ggroup, [["tous", t("gloss_all")], ["oiseaux", t("gloss_birds")], ["mammiferes", t("gloss_mammals")]]) +
       '<div id="gloss-list" class="stack">' + glossListHTML() + '</div>';
   }
 
   function viewAbonnes() {
     if (!isOwner()) {
       var g = gateHTML(); if (g) return g;
-      return '<div class="card"><h2>Mon compte</h2><p>Abonné : ' + esc(state.user.email) + '</p>' +
-        '<div class="row"><button class="btn small" data-act="signout">Se déconnecter</button>' +
-        '<button class="btn small danger" data-act="unsubscribe">Me désabonner</button></div></div>';
+      return '<div class="card"><h2>' + esc(t("my_account")) + '</h2><p>' + esc(t("subscriber_is", state.user.email)) + '</p>' +
+        '<div class="row"><button class="btn small" data-act="signout">' + esc(t("signout")) + '</button>' +
+        '<button class="btn small danger" data-act="unsubscribe">' + esc(t("unsubscribe")) + '</button></div></div>';
     }
     var pending = state.subs.filter(function (s) { return CLOUD && s.approved === false; });
     var active = state.subs.filter(function (s) { return !CLOUD || s.approved !== false; });
     var h = "";
-    if (!CLOUD) {
-      h += '<p class="notice">Mode local : le partage passe par e-mail ou messagerie. ' +
-        'Pour un fil commun dans l\'application, où vos abonnés publient aussi, passez en mode en ligne dans Réglages.</p>';
-    } else {
-      h += '<div class="card"><h2>Inviter</h2><p class="meta">Envoyez ce lien : chaque personne crée son compte, puis vous validez sa demande ici. Un abonné accepté lit le fil et peut y publier.</p>' +
+    if (!CLOUD) h += '<p class="notice">' + esc(t("local_share_note")) + '</p>';
+    else {
+      h += '<div class="card"><h2>' + esc(t("invite")) + '</h2><p class="meta">' + esc(t("invite_note")) + '</p>' +
         '<p style="word-break:break-all">' + esc(location.origin + location.pathname) + '</p>' +
-        '<div><button class="btn small" data-act="copy-link">Copier le lien</button></div></div>';
+        '<div><button class="btn small" data-act="copy-link">' + esc(t("copy_link")) + '</button></div></div>';
     }
     if (pending.length) {
-      h += '<h2>Demandes en attente</h2>' + pending.map(function (s) {
+      h += '<h2>' + esc(t("pending_requests")) + '</h2>' + pending.map(function (s) {
         return '<div class="card"><h3>' + esc(s.name || s.email) + '</h3><p class="meta">' + esc(s.email) + '</p>' +
-          '<div class="row"><button class="btn small primary" data-act="approve" data-id="' + esc(s.id) + '">Accepter</button>' +
-          '<button class="btn small danger" data-act="del-sub" data-id="' + esc(s.id) + '">Refuser</button></div></div>';
+          '<div class="row"><button class="btn small primary" data-act="approve" data-id="' + esc(s.id) + '">' + esc(t("accept")) + '</button>' +
+          '<button class="btn small danger" data-act="del-sub" data-id="' + esc(s.id) + '">' + esc(t("refuse")) + '</button></div></div>';
       }).join("");
     }
-    h += '<div class="row between"><h2>' + plural(active.length, "abonné") + '</h2>' +
-      (active.length ? '<button class="btn small" data-act="copy-emails">Copier les e-mails</button>' : "") + '</div>';
+    h += '<div class="row between"><h2>' + esc(t("n_subs", active.length)) + '</h2>' +
+      (active.length ? '<button class="btn small" data-act="copy-emails">' + esc(t("copy_emails")) + '</button>' : "") + '</div>';
     h += active.length ? active.map(function (s) {
       return '<div class="card"><div class="row between"><div class="grow"><h3>' + esc(s.name || s.email) + '</h3>' +
         '<p class="meta">' + esc(s.email) + '</p></div>' +
-        (CLOUD ? '<span class="pill">' + (s.account ? "Compte" : "Contact e-mail") + '</span>' : "") +
-        '<button class="btn small danger" data-act="del-sub" data-id="' + esc(s.id) + '">Retirer</button></div></div>';
-    }).join("") : '<p class="empty">Aucun abonné. Ajoutez un premier contact ci-dessous.</p>';
-    h += '<div class="card"><h2>Ajouter un contact</h2><form id="sub-form">' +
-      '<label for="sb-name">Nom<input id="sb-name" type="text" required></label>' +
-      '<label for="sb-email">E-mail<input id="sb-email" type="email" required></label>' +
-      '<div><button class="btn primary" type="submit">Ajouter</button></div></form></div>';
+        (CLOUD ? '<span class="pill">' + esc(s.account ? t("sub_account") : t("sub_contact")) + '</span>' : "") +
+        '<button class="btn small danger" data-act="del-sub" data-id="' + esc(s.id) + '">' + esc(t("remove")) + '</button></div></div>';
+    }).join("") : '<p class="empty">' + esc(t("empty_subs")) + '</p>';
+    h += '<div class="card"><h2>' + esc(t("add_contact")) + '</h2><form id="sub-form">' +
+      '<label for="sb-name">' + esc(t("name")) + '<input id="sb-name" type="text" required></label>' +
+      '<label for="sb-email">' + esc(t("email")) + '<input id="sb-email" type="email" required></label>' +
+      '<div><button class="btn primary" type="submit">' + esc(t("add")) + '</button></div></form></div>';
     return h;
   }
 
-  function optHTML(name, value, checked, title, desc, disabled) {
+  function optHTML(name, value, checked, head, desc, disabled) {
     return '<label class="opt" for="' + name + '-' + value + '"><input type="radio" id="' + name + '-' + value + '" name="' + name + '" value="' + value + '"' +
-      (checked ? " checked" : "") + (disabled ? " disabled" : "") + '><span><strong>' + title + '</strong><br><span class="meta">' + desc + '</span></span></label>';
+      (checked ? " checked" : "") + (disabled ? " disabled" : "") + '><span><strong>' + esc(head) + '</strong>' +
+      (desc ? '<br><span class="meta">' + esc(desc) + '</span>' : "") + '</span></label>';
   }
   function wantOnline(o) { return state.sel[o.id] === undefined ? !!o.synced : state.sel[o.id]; }
   function syncCardHTML() {
     var mine = syncables(), total = mine.length, on = mine.filter(function (o) { return o.synced; }).length;
-    var h = '<div class="card"><h2>Synchronisation</h2>' +
-      '<p>' + on + " sur " + plural(total, "observation") + ' partagée' + (on > 1 ? "s" : "") + ' en ligne avec les autres membres.</p>' +
-      '<p class="notice warn">La position GPS d\'une espèce sensible au dérangement reste sur votre appareil. Seul le nom du lieu est publié.</p>' +
-      optHTML("policy", "all", state.syncPolicy === "all", "Tout synchroniser", "Chaque observation, existante ou nouvelle, est publiée automatiquement.") +
-      optHTML("policy", "choose", state.syncPolicy !== "all", "Choisir observation par observation", "Rien n'est publié sans votre accord. Cochez ci-dessous ce que les autres membres peuvent voir.");
+    var h = '<div class="card"><h2>' + esc(t("sync_title")) + '</h2>' +
+      '<p>' + esc(t("sync_count", on, total)) + '</p>' +
+      '<p class="notice warn">' + esc(t("sync_sensitive")) + '</p>' +
+      optHTML("policy", "all", state.syncPolicy === "all", t("policy_all"), t("policy_all_desc")) +
+      optHTML("policy", "choose", state.syncPolicy !== "all", t("policy_choose"), t("policy_choose_desc"));
     if (state.syncPolicy !== "all") {
-      if (!total) h += '<p class="meta">Aucune observation à synchroniser pour l\'instant.</p>';
+      if (!total) h += '<p class="meta">' + esc(t("nothing_to_sync")) + '</p>';
       else {
         var changes = mine.filter(function (o) { return wantOnline(o) !== !!o.synced; }).length;
-        h += '<div class="row"><button class="btn small" data-act="sel-all">Tout cocher</button>' +
-          '<button class="btn small" data-act="sel-none">Tout décocher</button></div><div class="stack tight">' +
+        h += '<div class="row"><button class="btn small" data-act="sel-all">' + esc(t("check_all")) + '</button>' +
+          '<button class="btn small" data-act="sel-none">' + esc(t("uncheck_all")) + '</button></div><div class="stack tight">' +
           mine.map(function (o) {
             return '<label class="chk" for="sel-' + esc(o.id) + '"><input type="checkbox" id="sel-' + esc(o.id) + '" data-sel="' + esc(o.id) + '"' +
-              (wantOnline(o) ? " checked" : "") + '><span class="grow">' + esc(o.species) + ' <span class="meta">· ' + esc(shortDate(o.date)) +
+              (wantOnline(o) ? " checked" : "") + '><span class="grow">' + esc(obsSpecies(o)) + ' <span class="meta">· ' + esc(shortDate(o.date)) +
               (o.place ? " · " + esc(o.place) : "") + '</span></span>' + syncPill(o) + '</label>';
           }).join("") + '</div>' +
-          '<div class="row"><button class="btn primary" data-act="sel-apply"' + (changes ? "" : " disabled") + '>Appliquer' +
-          (changes ? " (" + plural(changes, "changement") + ")" : "") + '</button>' +
-          '<button class="btn" data-act="sync-all">Tout synchroniser maintenant</button></div>';
+          '<div class="row"><button class="btn primary" data-act="sel-apply"' + (changes ? "" : " disabled") + '>' + esc(t("apply")) +
+          (changes ? " (" + esc(t("n_changes", changes)) + ")" : "") + '</button>' +
+          '<button class="btn" data-act="sync-all">' + esc(t("sync_now")) + '</button></div>';
       }
     }
     return h + '</div>';
   }
   function viewReglages() {
-    var h = '<div class="card"><h2>Mode de fonctionnement</h2>' +
-      optHTML("mode", "local", !CLOUD, "Mode local", "Tout reste sur cet appareil. Partage par e-mail ou messagerie.") +
-      optHTML("mode", "online", CLOUD, "Mode en ligne", "Un fil commun : l'auteur et les abonnés acceptés y publient ce qu'ils choisissent.", !ONLINE_OK) +
-      (ONLINE_OK ? '<p class="meta">Changer de mode recharge l\'application. Vos observations restent sur cet appareil dans les deux modes.</p>'
-        : '<p class="notice">Le mode en ligne demande un projet Firebase renseigné dans config.js (voir LISEZMOI).</p>') + '</div>';
+    var h = '<div class="card"><h2>' + esc(t("lang_title")) + '</h2>' +
+      Object.keys(I18N).map(function (code) {
+        return optHTML("lang", code, code === LANG, I18N[code].label, "");
+      }).join("") +
+      '<p class="meta">' + esc(t("lang_desc")) + '</p></div>';
+    h += '<div class="card"><h2>' + esc(t("mode_title")) + '</h2>' +
+      optHTML("mode", "local", !CLOUD, t("mode_local"), t("mode_local_desc")) +
+      optHTML("mode", "online", CLOUD, t("mode_online"), t("mode_online_desc"), !ONLINE_OK) +
+      (ONLINE_OK ? '<p class="meta">' + esc(t("mode_switch")) + '</p>'
+        : '<p class="notice">' + esc(t("mode_need_cfg")) + '</p>') + '</div>';
     if (CLOUD) {
       if (canRead()) h += syncCardHTML();
-      else if (state.role === "guest" && !state.loading) h += '<p class="notice">Connectez-vous dans l\'onglet Observations pour gérer la synchronisation ou suivre le fil.</p>';
+      else if (state.role === "guest" && !state.loading) h += '<p class="notice">' + esc(t("login_for_sync")) + '</p>';
     }
     if (canRead()) {
-      h += '<div class="card"><h2>Sauvegarde</h2><p class="meta">Exportez vos observations dans un fichier, ou restaurez une sauvegarde.</p>' +
-        '<div class="row"><button class="btn small" data-act="export">Exporter (.json)</button>' +
-        '<label class="btn small" for="import-file">Importer<input id="import-file" type="file" accept="application/json,.json" hidden></label></div></div>';
+      h += '<div class="card"><h2>' + esc(t("backup")) + '</h2><p class="meta">' + esc(t("backup_desc")) + '</p>' +
+        '<div class="row"><button class="btn small" data-act="export">' + esc(t("export")) + '</button>' +
+        '<label class="btn small" for="import-file">' + esc(t("import")) + '<input id="import-file" type="file" accept="application/json,.json" hidden></label></div></div>';
     }
-    if (CLOUD && state.user) h += '<div class="card"><p class="meta">Connecté : ' + esc(state.user.email) + '</p><div><button class="btn small" data-act="signout">Se déconnecter</button></div></div>';
+    if (CLOUD && state.user) {
+      h += '<div class="card"><p class="meta">' + esc(t("connected_as", state.user.email)) + '</p>' +
+        '<div><button class="btn small" data-act="signout">' + esc(t("signout")) + '</button></div></div>';
+    }
     return h;
   }
 
@@ -739,9 +771,14 @@
     document.querySelectorAll("nav.tabs a").forEach(function (a) {
       if (a.getAttribute("href") === "#" + v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    $("tab-abonnes").textContent = isOwner() ? "Abonnés" : "Compte";
+    $("tab-obs").textContent = t("tab_obs");
+    $("tab-map").textContent = t("tab_map");
+    $("tab-gloss").textContent = t("tab_gloss");
+    $("tab-abonnes").textContent = isOwner() ? t("tab_subs") : t("tab_account");
+    $("tab-reglages").textContent = t("tab_settings");
     $("app-title").textContent = CFG.titre || "Carnet d'affût";
-    $("app-status").textContent = !CLOUD ? "Mode local" : "En ligne" + (isOwner() ? " · Auteur" : state.role === "subscriber" ? " · Abonné" : "");
+    $("app-status").textContent = !CLOUD ? t("st_local")
+      : t("st_online") + (isOwner() ? " · " + t("st_author") : state.role === "subscriber" ? " · " + t("st_subscriber") : "");
     killMap("all");
     $("main").innerHTML = { observations: viewObservations, carte: viewCarte, glossaire: viewGlossaire, abonnes: viewAbonnes, reglages: viewReglages }[v]();
     if (v === "carte" && $("map-all")) drawAllMap();
@@ -752,7 +789,7 @@
   function killMap(k) { if (maps[k]) { try { maps[k].remove(); } catch (e) {} maps[k] = null; } }
   function makeMap(k, el, center, zoom) {
     killMap(k);
-    if (!window.L) { el.innerHTML = '<p class="empty">Carte indisponible hors connexion.</p>'; return null; }
+    if (!window.L) { el.innerHTML = '<p class="empty">' + esc(t("map_unavailable")) + '</p>'; return null; }
     var m = L.map(el).setView(center, zoom);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -761,10 +798,7 @@
     setTimeout(function () { m.invalidateSize(); }, 60);
     return m;
   }
-  function dot(latlng, sensible) {
-    return L.circleMarker(latlng, { radius: 9, weight: 2, color: "#ffffff", fillColor: sensible ? "#c4621b" : "#0c6b7f", fillOpacity: 1 });
-  }
-  /* Icônes de carte : silhouette d'oiseau, silhouette de renard pour les mammifères, ou point neutre pour une espèce hors glossaire. */
+  /* Icônes : silhouette d'oiseau, silhouette de renard, appareil photo, ou point neutre. */
   var GLYPH = {
     oiseaux: '<path d="M23.2 9.6 L20.2 8.6 C19.8 6.2 16.2 5.4 14.4 7.8 C11 9.4 7.2 12 4.6 15 L0.8 19.4 L3.2 20.2 L6.8 17.6 C10.4 19.2 16.2 18.6 18.6 13.6 C19.2 12.4 19.8 11.4 20.4 10.6 Z"/><rect x="10.4" y="18" width="1" height="3.6"/><rect x="13" y="17.8" width="1" height="3.6"/>',
     mammiferes: '<path d="M23 11.6 L19.6 8.6 L19.7 4.2 L17.9 7 L16.5 4.6 L15.9 8.6 C14.5 9.6 12 10 8.2 10.4 C5.6 10.2 2.8 7.6 0.8 3.4 C0.2 8.6 2.2 13.2 6.3 14.2 L6.6 20.2 L8.2 20.2 L8.7 15.6 L13.1 15.6 L13.3 20.2 L14.9 20.2 L15.3 15 C16.4 14.6 17.2 13.9 17.6 13.2 L20.2 12.7 Z"/>',
@@ -773,96 +807,91 @@
   };
   function obsGroup(o) {
     if (isCam(o)) return "camera";
-    var sp = BY_NAME[(o.species || "").toLowerCase()];
+    var sp = findSpecies(o);
     return sp ? sp.group : "autre";
   }
   function pinHTML(group, sensible) {
     return '<span class="pin pin-' + group + (sensible ? " pin-sensible" : "") + '"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor">' + GLYPH[group] + '</svg></span>';
   }
   function obsMarker(o) {
-    var sp = BY_NAME[(o.species || "").toLowerCase()], group = obsGroup(o);
+    var group = obsGroup(o);
+    var kindWord = group === "oiseaux" ? t("legend_bird") : group === "mammiferes" ? t("legend_mammal") : group === "camera" ? t("legend_camera") : "";
     return L.marker([o.lat, o.lng], {
-      title: isCam(o) ? camName(o) : o.species,
-      alt: (group === "oiseaux" ? "Oiseau : " : group === "mammiferes" ? "Mammifère : " : group === "camera" ? "Caméra : " : "") +
-        (isCam(o) ? camName(o) : o.species),
+      title: title(o), alt: (kindWord ? kindWord + " : " : "") + title(o),
       icon: L.divIcon({ className: "pin-wrap", html: pinHTML(group, isSensitive(o)), iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] })
     });
   }
   function popupNode(o) {
     var box = document.createElement("div");
     box.className = "pop";
-    box.innerHTML = '<strong>' + esc(isCam(o) ? camName(o) : o.species) + (!isCam(o) && o.count > 1 ? " × " + esc(o.count) : "") + '</strong>' +
-      '<span>' + (isCam(o) ? "Caméra posée le " + esc(shortDate(o.date)) : esc(fmtDate(o.date))) + '</span>' +
+    box.innerHTML = '<strong>' + esc(title(o)) + (!isCam(o) && o.count > 1 ? " × " + esc(o.count) : "") + '</strong>' +
+      '<span>' + esc(isCam(o) ? t("cam_posted", shortDate(o.date)) : fmtDate(o.date)) + '</span>' +
       (o.place ? '<span>' + esc(o.place) + '</span>' : "") +
-      '<a href="#carte" class="pop-link">Voir le détail</a>';
-    // Leaflet bloque la propagation des clics dans une bulle : le lien porte son propre écouteur.
+      '<a href="#carte" class="pop-link">' + esc(t("popup_detail")) + '</a>';
     box.querySelector(".pop-link").addEventListener("click", function (e) { e.preventDefault(); openDetail(o.id); });
     return box;
   }
   function drawAllMap() {
     var m = makeMap("all", $("map-all"), CENTER, 8); if (!m) return;
     var pts = [];
-    obsList().filter(hasCoords).forEach(function (o) {
+    filteredObs().filter(hasCoords).forEach(function (o) {
       obsMarker(o).addTo(m).bindPopup(popupNode(o));
       pts.push([o.lat, o.lng]);
     });
     if (pts.length) m.fitBounds(pts, { padding: [30, 30], maxZoom: 13 });
   }
 
-  /* ---------- détail ---------- */
-  function openDetail(id) {
-    var o = findObs(id); if (!o) return;
-    if (isCam(o)) return openCamDetail(o);
-    var sp = BY_NAME[(o.species || "").toLowerCase()];
-    var d = $("dlg-detail"), cloudMine = CLOUD && !o.other, sens = isSensitive(o);
-    var sensMsg = !sens ? "" : o.other ? "Position GPS non communiquée : espèce sensible au dérangement."
-      : CLOUD ? "Espèce sensible : la position GPS reste sur votre appareil. Seul le nom du lieu est publié en ligne."
-      : "Espèce sensible au dérangement : merci de ne pas rediffuser cette position.";
+  /* ---------- fiche détaillée ---------- */
+  function openCamDetail(o) {
+    var d = $("dlg-detail");
     d.innerHTML = '<div class="dlg">' +
-      '<div><h2>' + esc(o.species) + (o.count > 1 ? " × " + esc(o.count) : "") + '</h2>' + (o.sci ? '<em class="sci">' + esc(o.sci) + '</em>' : "") + '</div>' +
-      '<p>' + esc(fmtDate(o.date)) + syncPill(o) + '</p>' +
-      (o.other ? '<p class="meta">Publiée par ' + esc(o.authorName || CFG.auteur || "un membre") + '</p>' : "") +
-      (o.place ? '<p><strong>Lieu :</strong> ' + esc(o.place) + '</p>' : "") +
+      '<div><h2>' + esc(camName(o)) + '</h2><span class="pill cam">' + esc(t("pill_camera")) + '</span></div>' +
+      '<p>' + esc(t("posted_on", fmtDate(o.date))) + '</p>' +
+      (o.place ? '<p><strong>' + esc(t("location_label")) + '</strong> ' + esc(o.place) + '</p>' : "") +
       (hasCoords(o) ? '<p class="meta">GPS ' + o.lat.toFixed(5) + ", " + o.lng.toFixed(5) +
-        ' · <a href="' + osmLink(o) + '" target="_blank" rel="noopener">Ouvrir dans OpenStreetMap</a></p><div id="map-detail" class="map"></div>' : "") +
-      (sens ? '<p class="notice warn">' + sensMsg + '</p>' : "") +
-      (o.photo ? '<img class="photo" alt="Photo de l\'observation" src="' + esc(o.photo) + '">' : "") +
+        ' · <a href="' + osmLink(o) + '" target="_blank" rel="noopener">' + esc(t("open_osm")) + '</a></p><div id="map-detail" class="map"></div>' : "") +
+      '<p class="notice">' + esc(t("cam_never_published")) + '</p>' +
+      (o.photo ? '<img class="photo" alt="' + esc(t("cam_photo_alt")) + '" src="' + esc(o.photo) + '">' : "") +
       (o.notes ? '<p style="white-space:pre-wrap">' + esc(o.notes) + '</p>' : "") +
-      '<div class="row">' +
-      '<button class="btn primary" data-act="share" data-id="' + esc(o.id) + '">Partager</button>' +
-      (isOwner() && !o.other ? '<a class="btn" data-act="mail" data-id="' + esc(o.id) + '" href="#">E-mail aux abonnés</a>' : "") +
-      '<button class="btn" data-act="copy-obs" data-id="' + esc(o.id) + '">Copier</button></div>' +
-      (canLike(o) ? '<div class="row likerow">' + likeBarHTML(o) +
-        '<span class="meta" data-likers-for="' + esc(o.id) + '">' + esc(likersHTML(o.id)) + '</span></div>' : "") +
-      (cloudMine ? '<div><button class="btn" data-act="toggle-sync" data-id="' + esc(o.id) + '">' +
-        (o.synced ? "Retirer du fil en ligne" : "Publier dans le fil en ligne") + '</button></div>' : "") +
-      '<div class="row">' +
-      (!o.other ? '<button class="btn small" data-act="edit" data-id="' + esc(o.id) + '">Modifier</button>' +
-        '<button class="btn small danger" data-act="del" data-id="' + esc(o.id) + '">Supprimer</button>'
-        : isOwner() ? '<button class="btn small danger" data-act="moderate" data-id="' + esc(o.id) + '">Retirer du fil</button>' : "") +
-      '<button class="btn small" data-act="close-detail">Fermer</button></div></div>';
+      '<div class="row"><button class="btn" data-act="copy-obs" data-id="' + esc(o.id) + '">' + esc(t("copy_sheet")) + '</button></div>' +
+      '<div class="row"><button class="btn small" data-act="edit" data-id="' + esc(o.id) + '">' + esc(t("edit")) + '</button>' +
+      '<button class="btn small danger" data-act="del" data-id="' + esc(o.id) + '">' + esc(t("del")) + '</button>' +
+      '<button class="btn small" data-act="close-detail">' + esc(t("close")) + '</button></div></div>';
     if (!d.open) d.showModal();
     if (hasCoords(o) && $("map-detail")) {
       var m = makeMap("detail", $("map-detail"), [o.lat, o.lng], 14);
       if (m) obsMarker(o).addTo(m);
     }
   }
-
-  function openCamDetail(o) {
-    var d = $("dlg-detail");
+  function openDetail(id) {
+    var o = findObs(id); if (!o) return;
+    if (isCam(o)) return openCamDetail(o);
+    var d = $("dlg-detail"), cloudMine = CLOUD && !o.other, sens = isSensitive(o);
+    var sensMsg = !sens ? "" : o.other ? t("sens_other") : CLOUD ? t("sens_mine_online") : t("sens_local");
     d.innerHTML = '<div class="dlg">' +
-      '<div><h2>' + esc(camName(o)) + '</h2><span class="pill cam">Caméra</span></div>' +
-      '<p>Posée le ' + esc(fmtDate(o.date)) + '</p>' +
-      (o.place ? '<p><strong>Emplacement :</strong> ' + esc(o.place) + '</p>' : "") +
+      '<div><h2>' + esc(obsSpecies(o)) + (o.count > 1 ? " × " + esc(o.count) : "") + '</h2>' +
+      (o.sci ? '<em class="sci">' + esc(o.sci) + '</em>' : "") + '</div>' +
+      '<p>' + esc(fmtDate(o.date)) + syncPill(o) + '</p>' +
+      (o.other ? '<p class="meta">' + esc(t("published_by", o.authorName || CFG.auteur || t("a_member"))) + '</p>' : "") +
+      (o.place ? '<p><strong>' + esc(t("place_label")) + '</strong> ' + esc(o.place) + '</p>' : "") +
       (hasCoords(o) ? '<p class="meta">GPS ' + o.lat.toFixed(5) + ", " + o.lng.toFixed(5) +
-        ' · <a href="' + osmLink(o) + '" target="_blank" rel="noopener">Ouvrir dans OpenStreetMap</a></p><div id="map-detail" class="map"></div>' : "") +
-      '<p class="notice">Emplacement gardé sur cet appareil : il n\'est jamais publié dans le fil en ligne.</p>' +
-      (o.photo ? '<img class="photo" alt="Photo de la caméra" src="' + esc(o.photo) + '">' : "") +
+        ' · <a href="' + osmLink(o) + '" target="_blank" rel="noopener">' + esc(t("open_osm")) + '</a></p><div id="map-detail" class="map"></div>' : "") +
+      (sens ? '<p class="notice warn">' + esc(sensMsg) + '</p>' : "") +
+      (o.photo ? '<img class="photo" alt="' + esc(t("photo_alt")) + '" src="' + esc(o.photo) + '">' : "") +
       (o.notes ? '<p style="white-space:pre-wrap">' + esc(o.notes) + '</p>' : "") +
-      '<div class="row"><button class="btn" data-act="copy-obs" data-id="' + esc(o.id) + '">Copier la fiche</button></div>' +
-      '<div class="row"><button class="btn small" data-act="edit" data-id="' + esc(o.id) + '">Modifier</button>' +
-      '<button class="btn small danger" data-act="del" data-id="' + esc(o.id) + '">Supprimer</button>' +
-      '<button class="btn small" data-act="close-detail">Fermer</button></div></div>';
+      '<div class="row">' +
+      '<button class="btn primary" data-act="share" data-id="' + esc(o.id) + '">' + esc(t("share")) + '</button>' +
+      (isOwner() && !o.other ? '<a class="btn" data-act="mail" data-id="' + esc(o.id) + '" href="#">' + esc(t("email_subs")) + '</a>' : "") +
+      '<button class="btn" data-act="copy-obs" data-id="' + esc(o.id) + '">' + esc(t("copy")) + '</button></div>' +
+      (canLike(o) ? '<div class="row likerow">' + likeBarHTML(o) +
+        '<span class="meta" data-likers-for="' + esc(o.id) + '">' + esc(likersHTML(o.id)) + '</span></div>' : "") +
+      (cloudMine ? '<div><button class="btn" data-act="toggle-sync" data-id="' + esc(o.id) + '">' +
+        esc(o.synced ? t("unpublish") : t("publish")) + '</button></div>' : "") +
+      '<div class="row">' +
+      (!o.other ? '<button class="btn small" data-act="edit" data-id="' + esc(o.id) + '">' + esc(t("edit")) + '</button>' +
+        '<button class="btn small danger" data-act="del" data-id="' + esc(o.id) + '">' + esc(t("del")) + '</button>'
+        : isOwner() ? '<button class="btn small danger" data-act="moderate" data-id="' + esc(o.id) + '">' + esc(t("moderate")) + '</button>' : "") +
+      '<button class="btn small" data-act="close-detail">' + esc(t("close")) + '</button></div></div>';
     if (!d.open) d.showModal();
     if (hasCoords(o) && $("map-detail")) {
       var m = makeMap("detail", $("map-detail"), [o.lat, o.lng], 14);
@@ -871,10 +900,10 @@
   }
 
   /* ---------- formulaire ---------- */
-  function coordsLabel(f) { return hasCoords(f) ? f.lat.toFixed(5) + ", " + f.lng.toFixed(5) : "Position non définie"; }
+  function coordsLabel(f) { return hasCoords(f) ? f.lat.toFixed(5) + ", " + f.lng.toFixed(5) : t("coords_none"); }
   function photoPreviewHTML(src) {
-    return src ? '<img class="photo" alt="Aperçu de la photo" src="' + esc(src) + '">' +
-      '<div><button class="btn small danger" type="button" data-act="rm-photo">Retirer la photo</button></div>' : "";
+    return src ? '<img class="photo" alt="' + esc(t("photo_preview")) + '" src="' + esc(src) + '">' +
+      '<div><button class="btn small danger" type="button" data-act="rm-photo">' + esc(t("rm_photo")) + '</button></div>' : "";
   }
   function openForm(o, species) {
     var f = state.form = o ? Object.assign({}, o) : {
@@ -882,34 +911,34 @@
     };
     var cam = isCam(f);
     var d = $("dlg-form");
-    d.innerHTML = '<div class="dlg"><h2>' + (f.id ? (cam ? "Modifier la caméra" : "Modifier l'observation")
-      : cam ? "Nouvelle caméra" : "Nouvelle observation") + '</h2>' +
+    d.innerHTML = '<div class="dlg"><h2>' +
+      esc(f.id ? (cam ? t("edit_cam") : t("edit_obs")) : cam ? t("new_cam") : t("new_obs")) + '</h2>' +
       '<form id="obs-form">' +
-      '<div class="chips">' + [["", "Observation"], ["camera", "Caméra"]].map(function (k) {
-        return '<button type="button" class="chip" data-act="fkind" data-v="' + k[0] + '" aria-pressed="' + ((f.kind || "") === k[0]) + '">' + k[1] + '</button>';
+      '<div class="chips">' + [["", t("kind_observation")], ["camera", t("kind_camera")]].map(function (k) {
+        return '<button type="button" class="chip" data-act="fkind" data-v="' + k[0] + '" aria-pressed="' + ((f.kind || "") === k[0]) + '">' + esc(k[1]) + '</button>';
       }).join("") + '</div>' +
-      (cam ? '<p class="notice">Une caméra reste sur cet appareil : son emplacement n\'est jamais publié dans le fil en ligne.</p>' : "") +
+      (cam ? '<p class="notice">' + esc(t("cam_form_note")) + '</p>' : "") +
       (cam
-        ? '<label for="f-species">Nom de la caméra<input id="f-species" required autocomplete="off" value="' + esc(f.species) + '" placeholder="ex. Caméra 3 — layon est"></label>'
-        : '<label for="f-species">Espèce<input id="f-species" list="species-list" required autocomplete="off" value="' + esc(f.species) + '" placeholder="Nom du glossaire ou saisie libre"></label>' +
+        ? '<label for="f-species">' + esc(t("f_camname")) + '<input id="f-species" required autocomplete="off" value="' + esc(f.species) + '" placeholder="' + esc(t("f_camname_ph")) + '"></label>'
+        : '<label for="f-species">' + esc(t("f_species")) + '<input id="f-species" list="species-list" required autocomplete="off" value="' + esc(f.species) + '" placeholder="' + esc(t("f_species_ph")) + '"></label>' +
           '<datalist id="species-list">' + SPECIES.map(function (s) { return '<option value="' + esc(s.name) + '">' + esc(s.sci) + '</option>'; }).join("") + '</datalist>') +
       (cam
-        ? '<label for="f-date">Date de pose<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>'
-        : '<div class="two"><label for="f-date">Date et heure<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>' +
-          '<label for="f-count">Nombre d\'individus<input id="f-count" type="number" min="1" inputmode="numeric" value="' + esc(f.count || 1) + '"></label></div>') +
-      '<label for="f-place">Lieu (nom)<input id="f-place" value="' + esc(f.place) + '" placeholder="' + (cam ? "ex. versant nord, parcelle 12" : "ex. Haff Réimech, étang nord") + '"></label>' +
-      '<div class="row"><button class="btn" type="button" data-act="gps">Ma position GPS</button>' +
-      '<span class="meta" id="f-coords">' + coordsLabel(f) + '</span></div>' +
-      '<div id="map-form" class="map"></div><p class="meta">Touchez la carte pour placer ou corriger le point.</p>' +
-      (cam ? "" : '<label class="chk" for="f-hide"><input type="checkbox" id="f-hide"' + (f.hideLoc ? " checked" : "") + '><span class="grow">Espèce sensible : ne pas publier la position GPS en ligne' +
-      '<br><span class="meta">Toujours appliqué aux espèces marquées sensibles dans le glossaire.</span></span></label>') +
-      '<div class="field"><span class="flabel">Photo (facultative, réduite automatiquement)</span><div class="row">' +
-      '<label class="btn" for="f-cam">Prendre une photo<input id="f-cam" type="file" accept="image/*" capture="environment" hidden></label>' +
-      '<label class="btn" for="f-photo">Choisir un fichier ou dans la galerie<input id="f-photo" type="file" accept="image/*" hidden></label></div></div>' +
+        ? '<label for="f-date">' + esc(t("f_posedate")) + '<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>'
+        : '<div class="two"><label for="f-date">' + esc(t("f_datetime")) + '<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>' +
+          '<label for="f-count">' + esc(t("f_count")) + '<input id="f-count" type="number" min="1" inputmode="numeric" value="' + esc(f.count || 1) + '"></label></div>') +
+      '<label for="f-place">' + esc(t("f_place")) + '<input id="f-place" value="' + esc(f.place) + '" placeholder="' + esc(cam ? t("f_camplace_ph") : t("f_place_ph")) + '"></label>' +
+      '<div class="row"><button class="btn" type="button" data-act="gps">' + esc(t("gps_button")) + '</button>' +
+      '<span class="meta" id="f-coords">' + esc(coordsLabel(f)) + '</span></div>' +
+      '<div id="map-form" class="map"></div><p class="meta">' + esc(t("map_hint")) + '</p>' +
+      (cam ? "" : '<label class="chk" for="f-hide"><input type="checkbox" id="f-hide"' + (f.hideLoc ? " checked" : "") + '><span class="grow">' +
+        esc(t("f_hide")) + '<br><span class="meta">' + esc(t("f_hide_desc")) + '</span></span></label>') +
+      '<div class="field"><span class="flabel">' + esc(t("f_photo")) + '</span><div class="row">' +
+      '<label class="btn" for="f-cam">' + esc(t("take_photo")) + '<input id="f-cam" type="file" accept="image/*" capture="environment" hidden></label>' +
+      '<label class="btn" for="f-photo">' + esc(t("pick_photo")) + '<input id="f-photo" type="file" accept="image/*" hidden></label></div></div>' +
       '<div id="f-preview" class="stack tight">' + photoPreviewHTML(f.photo) + '</div>' +
-      '<label for="f-notes">Notes<textarea id="f-notes" rows="3" placeholder="' + (cam ? "Modèle, carte mémoire, code, date de relève…" : "Comportement, lumière, matériel…") + '">' + esc(f.notes) + '</textarea></label>' +
-      '<div class="row"><button class="btn primary" type="submit">Enregistrer</button>' +
-      '<button class="btn" type="button" data-act="close-form">Annuler</button></div></form></div>';
+      '<label for="f-notes">' + esc(t("f_notes")) + '<textarea id="f-notes" rows="3" placeholder="' + esc(cam ? t("cam_notes_ph") : t("notes_ph")) + '">' + esc(f.notes) + '</textarea></label>' +
+      '<div class="row"><button class="btn primary" type="submit">' + esc(t("save")) + '</button>' +
+      '<button class="btn" type="button" data-act="close-form">' + esc(t("cancel")) + '</button></div></form></div>';
     if ($("dlg-detail").open) $("dlg-detail").close();
     d.showModal();
     var last = myList().filter(hasCoords)[0];
@@ -937,7 +966,7 @@
     $("f-coords").textContent = coordsLabel(state.form);
     var m = maps.form; if (!m) return;
     if (formMarker) { try { formMarker.remove(); } catch (e) {} }
-    formMarker = dot([lat, lng], false).addTo(m);
+    formMarker = L.circleMarker([lat, lng], { radius: 9, weight: 2, color: "#ffffff", fillColor: "#0c6b7f", fillOpacity: 1 }).addTo(m);
     if (recenter) m.setView([lat, lng], 15);
   }
   function resizePhoto(file) {
@@ -966,23 +995,28 @@
     else if (act === "close-form") { $("dlg-form").close(); }
     else if (act === "edit") { openForm(findObs(id)); }
     else if (act === "rm-photo") { state.form.photo = ""; $("f-preview").innerHTML = ""; }
-    else if (act === "fkind") {
-      var f = readForm(); f.kind = el.dataset.v;
-      openForm(f);                                  // redessine le formulaire sans perdre la saisie
-    }
+    else if (act === "fkind") { var ff = readForm(); ff.kind = el.dataset.v; openForm(ff); }
     else if (act === "del") {
       var del = findObs(id);
-      if (confirm(del && isCam(del) ? "Supprimer définitivement cette caméra ?"
-        : "Supprimer définitivement cette observation" + (CLOUD ? ", ici et dans le fil en ligne" : "") + " ?")) {
-        store.deleteObs(id).then(function () { $("dlg-detail").close(); toast(del && isCam(del) ? "Caméra supprimée." : "Observation supprimée."); render(); })
-          .catch(function () { toast("Suppression impossible."); });
+      if (confirm(del && isCam(del) ? t("c_del_cam") : CLOUD ? t("c_del_obs_online") : t("c_del_obs"))) {
+        store.deleteObs(id).then(function () {
+          $("dlg-detail").close(); toast(del && isCam(del) ? t("t_deleted_cam") : t("t_deleted_obs")); render();
+        }).catch(function () { toast(t("t_delete_fail")); });
+      }
+    }
+    else if (act === "moderate") {
+      if (confirm(t("c_moderate"))) {
+        db.collection("observations").doc(id).delete().then(function () {
+          $("dlg-detail").close(); toast(t("t_moderated"));
+        }, cloudErr);
       }
     }
     else if (act === "toggle-sync") {
       o = findObs(id); if (!o) return;
       var was = o.synced;
       (was ? unpublish(o) : publish(o)).then(function () {
-        toast(was ? "Retirée du fil en ligne." : isSensitive(o) ? "Publiée sans la position GPS (espèce sensible)." : "Publiée dans le fil en ligne."); openDetail(id); render();
+        toast(was ? t("t_unpublished") : isSensitive(o) ? t("t_published_nogps") : t("t_published"));
+        openDetail(id); render();
       });
     }
     else if (act === "sel-all" || act === "sel-none") {
@@ -991,11 +1025,6 @@
     else if (act === "who") { state.who = el.dataset.v; render(); }
     else if (act === "kind") { state.kind = el.dataset.v; render(); }
     else if (act === "like") { toggleLike(id); }
-    else if (act === "moderate") {
-      if (confirm("Retirer cette observation du fil en ligne ? Son auteur la conserve sur son appareil.")) {
-        db.collection("observations").doc(id).delete().then(function () { $("dlg-detail").close(); toast("Observation retirée du fil."); }, cloudErr);
-      }
-    }
     else if (act === "sel-apply") {
       var jobs = [], pub = 0, unp = 0;
       syncables().forEach(function (x) {
@@ -1004,56 +1033,56 @@
         else if (!want && x.synced) { unp++; jobs.push(unpublish(x)); }
       });
       state.sel = {};
-      Promise.all(jobs).then(function () { toast(pub + " publiée(s), " + unp + " retirée(s)."); render(); });
+      Promise.all(jobs).then(function () { toast(t("t_applied", pub, unp)); render(); });
     }
     else if (act === "sync-all") {
       state.sel = {};
-      syncAll().then(function (n) { toast(n ? plural(n, "observation") + " publiée" + (n > 1 ? "s." : ".") : "Tout est déjà en ligne."); render(); });
+      syncAll().then(function (n) { toast(n ? t("t_synced", n) : t("t_all_synced")); render(); });
     }
     else if (act === "share") {
       o = findObs(id); if (!o) return;
       var text = obsText(o);
-      if (navigator.share) { navigator.share({ title: o.species, text: text }).catch(function () {}); }
-      else { copy(text, "Texte copié : collez-le dans votre messagerie."); }
+      if (navigator.share) { navigator.share({ title: title(o), text: text }).catch(function () {}); }
+      else { copy(text, t("t_copied_text")); }
     }
-    else if (act === "copy-obs") { o = findObs(id); if (o) copy(obsText(o), "Observation copiée."); }
+    else if (act === "copy-obs") { o = findObs(id); if (o) copy(obsText(o), t("t_copied_obs")); }
     else if (act === "mail") {
       e.preventDefault();
       o = findObs(id); if (!o) return;
       var emails = subscriberEmails();
-      if (!emails.length) { toast("Aucun abonné avec e-mail. Ajoutez-en dans l'onglet Abonnés."); return; }
+      if (!emails.length) { toast(t("t_no_sub_email")); return; }
       location.href = "mailto:?bcc=" + encodeURIComponent(emails.join(",")) +
-        "&subject=" + encodeURIComponent("Observation : " + o.species + " — " + (o.place || fmtDate(o.date))) +
+        "&subject=" + encodeURIComponent(t("sh_subject", title(o), o.place || fmtDate(o.date))) +
         "&body=" + encodeURIComponent(obsText(o));
     }
     else if (act === "gps") {
-      if (!navigator.geolocation) { toast("Localisation indisponible sur cet appareil."); return; }
-      toast("Recherche de la position…");
+      if (!navigator.geolocation) { toast(t("t_gps_none")); return; }
+      toast(t("t_gps_searching"));
       navigator.geolocation.getCurrentPosition(function (p) {
         setFormPoint(p.coords.latitude, p.coords.longitude, true);
-        toast("Position relevée (± " + Math.round(p.coords.accuracy) + " m).");
-      }, function () { toast("Position refusée ou introuvable. Placez le point sur la carte."); },
+        toast(t("t_gps_ok", Math.round(p.coords.accuracy)));
+      }, function () { toast(t("t_gps_fail")); },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     }
     else if (act === "ggroup") { state.ggroup = el.dataset.v; render(); }
-    else if (act === "approve") { store.updateSub(id, { approved: true }).then(function () { toast("Abonné accepté."); render(); }); }
+    else if (act === "approve") { store.updateSub(id, { approved: true }).then(function () { toast(t("t_sub_accepted")); render(); }); }
     else if (act === "del-sub") {
-      if (confirm("Retirer cette personne de la liste ?")) store.deleteSub(id).then(function () { render(); });
+      if (confirm(t("c_rm_sub"))) store.deleteSub(id).then(function () { render(); });
     }
-    else if (act === "copy-emails") { copy(subscriberEmails().join(", "), "Adresses copiées."); }
-    else if (act === "copy-link") { copy(location.origin + location.pathname, "Lien copié."); }
+    else if (act === "copy-emails") { copy(subscriberEmails().join(", "), t("t_copied_emails")); }
+    else if (act === "copy-link") { copy(location.origin + location.pathname, t("t_copied_link")); }
     else if (act === "signout") { auth.signOut(); }
-    else if (act === "ask-sub") { requestSubscription("").then(function () { toast("Demande envoyée."); }); }
+    else if (act === "ask-sub") { requestSubscription("").then(function () { toast(t("t_request_sent")); }); }
     else if (act === "unsubscribe") {
-      if (confirm("Vous désabonner ? Vous ne verrez plus les observations.")) {
-        db.collection("subscribers").doc(state.user.uid).delete().then(function () { toast("Désabonné."); });
+      if (confirm(t("c_unsub"))) {
+        db.collection("subscribers").doc(state.user.uid).delete().then(function () { toast(t("t_unsubscribed")); });
       }
     }
     else if (act === "reset-pass") {
       var em = ($("au-email").value || "").trim();
-      if (!em) { toast("Saisissez d'abord votre e-mail."); return; }
-      auth.sendPasswordResetEmail(em).then(function () { toast("E-mail de réinitialisation envoyé."); },
-        function (err) { toast(AUTH_ERR[err.code] || "Envoi impossible."); });
+      if (!em) { toast(t("t_reset_need_email")); return; }
+      auth.sendPasswordResetEmail(em).then(function () { toast(t("t_reset_sent")); },
+        function (err) { toast(AUTH_ERR[err.code] ? authErr(err) : t("t_reset_fail")); });
     }
     else if (act === "export") { exportData(); }
   });
@@ -1064,22 +1093,24 @@
   });
 
   document.addEventListener("change", function (e) {
-    var t = e.target;
-    if ((t.id === "f-photo" || t.id === "f-cam") && t.files[0]) {
-      resizePhoto(t.files[0]).then(function (data) {
+    var el = e.target;
+    if ((el.id === "f-photo" || el.id === "f-cam") && el.files[0]) {
+      resizePhoto(el.files[0]).then(function (data) {
         state.form.photo = data; $("f-preview").innerHTML = photoPreviewHTML(data);
-      }, function () { toast("Image illisible. Essayez un fichier JPEG ou PNG."); });
-      t.value = "";
-    } else if (t.id === "import-file" && t.files[0]) {
-      importData(t.files[0]);
-    } else if (t.name === "mode") {
-      LS.set("carnet.mode", t.value); location.reload();
-    } else if (t.name === "policy") {
-      state.syncPolicy = t.value; LS.set("carnet.sync", t.value); state.sel = {};
-      if (t.value === "all" && cloudOwner()) syncAll().then(function (n) { if (n) toast(plural(n, "observation") + " publiée" + (n > 1 ? "s." : ".")); render(); });
+      }, function () { toast(t("t_img_fail")); });
+      el.value = "";
+    } else if (el.id === "import-file" && el.files[0]) {
+      importData(el.files[0]);
+    } else if (el.name === "mode") {
+      LS.set("carnet.mode", el.value); location.reload();
+    } else if (el.name === "lang") {
+      LS.set("carnet.lang", el.value); location.reload();
+    } else if (el.name === "policy") {
+      state.syncPolicy = el.value; LS.set("carnet.sync", el.value); state.sel = {};
+      if (el.value === "all" && cloudOwner()) syncAll().then(function (n) { if (n) toast(t("t_synced", n)); render(); });
       render();
-    } else if (t.dataset && t.dataset.sel) {
-      state.sel[t.dataset.sel] = t.checked; render();
+    } else if (el.dataset && el.dataset.sel) {
+      state.sel[el.dataset.sel] = el.checked; render();
     }
   });
 
@@ -1090,24 +1121,21 @@
       var o = Object.assign({}, readForm());
       if (isCam(o)) { o.sci = ""; o.count = 1; o.hideLoc = false; }
       else {
-        var sp = BY_NAME[o.species.toLowerCase()];
+        var sp = BY_NAME[norm(o.species)];
         if (sp) { o.species = sp.name; o.sci = sp.sci; }
         else if (!state.form.sci) o.sci = "";
       }
-      if (!hasCoords(o) && !o.place) {
-        toast(isCam(o) ? "Indiquez l'emplacement de la caméra : position GPS, point sur la carte ou nom."
-          : "Indiquez un lieu : position GPS, point sur la carte ou nom."); return;
-      }
+      if (!hasCoords(o) && !o.place) { toast(isCam(o) ? t("t_need_place_cam") : t("t_need_place")); return; }
       store.saveObs(o).then(function () {
         $("dlg-form").close();
-        toast(isCam(o) ? "Caméra enregistrée." : CLOUD && !o.synced ? "Enregistrée sur cet appareil (non publiée)." : "Observation enregistrée.");
+        toast(isCam(o) ? t("t_saved_cam") : CLOUD && !o.synced ? t("t_saved_local") : t("t_saved_obs"));
         render();
-      }).catch(function (err) { console.error(err); toast("Enregistrement impossible : stockage de l'appareil plein ?"); });
+      }).catch(function (err) { console.error(err); toast(t("t_save_fail")); });
     } else if (f.id === "sub-form") {
       var em = $("sb-email").value.trim().toLowerCase();
-      if (state.subs.some(function (s) { return (s.email || "").toLowerCase() === em; })) { toast("Cette adresse est déjà dans la liste."); return; }
+      if (state.subs.some(function (s) { return (s.email || "").toLowerCase() === em; })) { toast(t("t_sub_dup")); return; }
       store.addSub({ name: $("sb-name").value.trim(), email: em, approved: true, account: false, createdAt: Date.now() })
-        .then(function () { toast("Contact ajouté."); render(); });
+        .then(function () { toast(t("t_sub_added")); render(); });
     } else if (f.id === "auth-form") {
       var mode = (e.submitter && e.submitter.dataset.mode) || "in";
       var email = $("au-email").value.trim(), pass = $("au-pass").value;
@@ -1118,7 +1146,7 @@
             if ((c.user.email || "").toLowerCase() !== owner) return requestSubscription(pendingName);
           })
         : auth.signInWithEmailAndPassword(email, pass);
-      p.catch(function (err) { toast(AUTH_ERR[err.code] || "Connexion impossible."); });
+      p.catch(function (err) { toast(authErr(err)); });
     }
   });
 
@@ -1128,15 +1156,18 @@
 
   /* ---------- sauvegarde ---------- */
   function exportData() {
-    var blob = new Blob([JSON.stringify({ app: "carnet-affut", version: 2, exportedAt: new Date().toISOString(), observations: myList(), abonnes: state.subs }, null, 2)], { type: "application/json" });
+    var blob = new Blob([JSON.stringify({
+      app: "carnet-affut", version: 3, exportedAt: new Date().toISOString(),
+      observations: myList(), abonnes: state.subs
+    }, null, 2)], { type: "application/json" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = "carnet-affut-" + new Date().toISOString().slice(0, 10) + ".json";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
   }
   function importData(file) {
-    file.text().then(function (t) {
-      var data = JSON.parse(t), obs = data.observations || [], subs = data.abonnes || [];
+    file.text().then(function (txt) {
+      var data = JSON.parse(txt), obs = data.observations || [], subs = data.abonnes || [];
       var haveO = {}, haveS = {};
       state.mine.forEach(function (o) { haveO[o.id] = 1; });
       state.subs.forEach(function (s) { haveS[(s.email || "").toLowerCase()] = 1; });
@@ -1153,14 +1184,15 @@
           jobs.push(store.addSub({ name: s.name || "", email: s.email, approved: true, account: false, createdAt: s.createdAt || Date.now() }));
       });
       return Promise.all(jobs).then(function () {
-        toast(jobs.length + " élément(s) importé(s).");
+        toast(t("t_imported", jobs.length));
         if (cloudOwner() && state.syncPolicy === "all") syncAll();
         render();
       });
-    }).catch(function () { toast("Fichier de sauvegarde illisible."); });
+    }).catch(function () { toast(t("t_import_fail")); });
   }
 
   /* ---------- démarrage ---------- */
+  document.documentElement.lang = LANG;
   window.addEventListener("hashchange", render);
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(function () {});
