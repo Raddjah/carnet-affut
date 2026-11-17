@@ -129,17 +129,18 @@ label.opt:has(input:disabled){opacity:.55;cursor:default}
 </header>
 <main id="main"></main>
 <nav class="tabs" aria-label="Sections">
-  <a href="#observations">Observations</a>
-  <a href="#carte">Carte</a>
-  <a href="#glossaire">Glossaire</a>
+  <a href="#observations" id="tab-obs">Observations</a>
+  <a href="#carte" id="tab-map">Carte</a>
+  <a href="#glossaire" id="tab-gloss">Glossaire</a>
   <a href="#abonnes" id="tab-abonnes">Abonnés</a>
-  <a href="#reglages">Réglages</a>
+  <a href="#reglages" id="tab-reglages">Réglages</a>
 </nav>
-<dialog id="dlg-form" aria-label="Observation"></dialog>
-<dialog id="dlg-detail" aria-label="Détail de l'observation"></dialog>
+<dialog id="dlg-form"></dialog>
+<dialog id="dlg-detail"></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="config.js"></script>
+<script src="i18n.js"></script>
 <script src="glossaire.js"></script>
 <script src="app.js"></script>
 </body>

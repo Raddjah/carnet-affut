@@ -817,7 +817,7 @@
     var group = obsGroup(o);
     var kindWord = group === "oiseaux" ? t("legend_bird") : group === "mammiferes" ? t("legend_mammal") : group === "camera" ? t("legend_camera") : "";
     return L.marker([o.lat, o.lng], {
-      title: title(o), alt: (kindWord ? kindWord + " : " : "") + title(o),
+      title: title(o), alt: (kindWord ? kindWord + (LANG === "fr" ? " : " : ": ") : "") + title(o),
       icon: L.divIcon({ className: "pin-wrap", html: pinHTML(group, isSensitive(o)), iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] })
     });
   }
