@@ -1,8 +1,8 @@
 /* Service worker v2 : application installable et consultable hors connexion,
    photos du glossaire (Wikimedia Commons) gardées en cache après le premier affichage. */
-var CACHE = "carnet-affut-v2";
+var CACHE = "carnet-affut-v3";
 var PHOTOS = "carnet-affut-photos";
-var SHELL = ["./", "index.html", "app.js", "glossaire.js", "config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+var SHELL = ["./", "index.html", "app.js", "i18n.js", "glossaire.js", "config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
