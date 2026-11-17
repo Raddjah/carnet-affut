@@ -71,7 +71,8 @@
     syncPolicy: LS.get("carnet.sync", "choose"),  // "all" = tout synchroniser, "choose" = au choix
     sel: {},                          // sélection en cours dans l'écran de synchronisation
     likes: {},                        // j'aime du fil en ligne, par observation
-    who: "all"                        // filtre de la liste en ligne : all | mine | others
+    who: "all",                       // filtre de la liste en ligne : all | mine | others
+    kind: "all"                       // filtre par nature : all | obs | camera
   };
   var db = null, auth = null, unsub = [], pendingName = "";
   var maps = {};
@@ -89,8 +90,11 @@
     if (!canRead()) return [];
     return CLOUD ? myList().concat(state.others).sort(byDateDesc) : state.mine;
   }
+  function isCam(o) { return o.kind === "camera"; }
+  function camName(o) { return o.species || "Caméra"; }
   /* Espèce sensible : marquée dans le glossaire, ou cochée par l'auteur de l'observation. */
   function isSensitive(o) {
+    if (isCam(o)) return false;
     var sp = BY_NAME[(o.species || "").toLowerCase()];
     return !!(o.hideLoc || o.locHidden || (sp && sp.sensible));
   }
@@ -173,6 +177,7 @@
   }
   function pushCloud(o) { db.collection("observations").doc(o.id).set(cloudData(o)).catch(cloudErr); }
   function publish(o) {
+    if (isCam(o)) return Promise.resolve();   // une caméra ne quitte jamais l'appareil
     o.synced = true; o.authorUid = myUid();
     return upsertMine(o).then(function () { pushCloud(o); });
   }
@@ -180,8 +185,9 @@
     o.synced = false;
     return upsertMine(o).then(function () { db.collection("observations").doc(o.id).delete().catch(cloudErr); });
   }
+  function syncables() { return myList().filter(function (o) { return !isCam(o); }); }
   function syncAll() {
-    var todo = myList().filter(function (o) { return !o.synced; });
+    var todo = syncables().filter(function (o) { return !o.synced; });
     return Promise.all(todo.map(publish)).then(function () { return todo.length; });
   }
 
@@ -191,7 +197,7 @@
       if (!o.id) {
         o.id = uid(); o.createdAt = o.updatedAt;
         if (CLOUD) o.authorUid = myUid();
-        o.synced = cloudOwner() && state.syncPolicy === "all";
+        o.synced = !isCam(o) && cloudOwner() && state.syncPolicy === "all";
       }
       return upsertMine(o).then(function () { if (cloudOwner() && o.synced) pushCloud(o); });
     },
@@ -273,7 +279,7 @@
     });
     state.mine.sort(byDateDesc);
     Promise.all(jobs.map(localPut)).catch(function () {});
-    if (state.syncPolicy === "all" && myList().some(function (o) { return !o.synced; })) syncAll();
+    if (state.syncPolicy === "all" && syncables().some(function (o) { return !o.synced; })) syncAll();
     render();
   }
   function startFeed() {
@@ -473,6 +479,13 @@
 
   /* ---------- texte de partage ---------- */
   function obsText(o) {
+    if (isCam(o)) {
+      var C = [camName(o) + " (caméra autonome)", "Posée le " + fmtDate(o.date)];
+      if (o.place) C.push("Emplacement : " + o.place);
+      if (hasCoords(o)) { C.push("GPS : " + o.lat.toFixed(5) + ", " + o.lng.toFixed(5)); C.push("Carte : " + osmLink(o)); }
+      if (o.notes) { C.push(""); C.push(o.notes); }
+      return C.join("\n");
+    }
     var L = [o.species + (o.sci ? " (" + o.sci + ")" : "")];
     L.push(fmtDate(o.date) + (o.count > 1 ? " · " + o.count + " individus" : ""));
     if (o.place) L.push("Lieu : " + o.place);
@@ -534,6 +547,7 @@
   function filteredObs() {
     var q = norm(state.q), all = obsList();
     if (CLOUD && state.who !== "all") all = all.filter(function (o) { return (state.who === "others") === !!o.other; });
+    if (state.kind !== "all") all = all.filter(function (o) { return (state.kind === "camera") === isCam(o); });
     if (!q) return all;
     return all.filter(function (o) { return norm([o.species, o.sci, o.place, o.notes].join(" ")).indexOf(q) >= 0; });
   }
@@ -544,6 +558,15 @@
     }
     if (!list.length) return '<p class="empty">Aucune observation ne correspond à cette recherche.</p>';
     return list.map(function (o) {
+      if (isCam(o)) {
+        return '<div class="card obs"><button class="main" data-act="open" data-id="' + esc(o.id) + '"><span class="row">' +
+          (o.photo ? '<img class="thumb" alt="" src="' + esc(o.photo) + '">' : "") +
+          '<span class="grow"><h3>' + esc(camName(o)) + '</h3>' +
+          '<span class="meta">Posée le ' + esc(shortDate(o.date)) + '</span><br>' +
+          '<span class="meta">' + esc(o.place || (hasCoords(o) ? o.lat.toFixed(4) + ", " + o.lng.toFixed(4) : "Lieu non précisé")) + '</span>' +
+          ' <span class="pill cam">Caméra</span>' +
+          '</span></span></button></div>';
+      }
       var where = o.other && o.locHidden ? (o.place || "Lieu non précisé") + " · position GPS masquée"
         : (o.place || (hasCoords(o) ? o.lat.toFixed(4) + ", " + o.lng.toFixed(4) : "Lieu non précisé"));
       return '<div class="card obs"><button class="main" data-act="open" data-id="' + esc(o.id) + '"><span class="row">' +
@@ -558,9 +581,14 @@
   }
   function viewObservations() {
     var g = gateHTML(); if (g) return g;
-    var all = obsList(), nSp = {}; all.forEach(function (o) { nSp[norm(o.species)] = 1; });
-    return '<div class="row between"><h2>' + plural(all.length, "observation") + " · " + plural(Object.keys(nSp).length, "espèce") + '</h2></div>' +
+    var all = obsList(), nSp = {}, nCam = 0;
+    all.forEach(function (o) { if (isCam(o)) nCam++; else nSp[norm(o.species)] = 1; });
+    return '<div class="row between"><h2>' + plural(all.length - nCam, "observation") + " · " + plural(Object.keys(nSp).length, "espèce") +
+      (nCam ? " · " + plural(nCam, "caméra") : "") + '</h2></div>' +
       '<input id="q" type="search" placeholder="Chercher une espèce, un lieu…" aria-label="Chercher dans les observations" value="' + esc(state.q) + '">' +
+      (nCam ? '<div class="chips">' + [["all", "Tout"], ["obs", "Observations"], ["camera", "Caméras"]].map(function (c) {
+        return '<button class="chip" data-act="kind" data-v="' + c[0] + '" aria-pressed="' + (state.kind === c[0]) + '">' + c[1] + '</button>';
+      }).join("") + '</div>' : "") +
       (CLOUD ? '<div class="chips">' + [["all", "Toutes"], ["mine", "Les miennes"], ["others", "Des autres membres"]].map(function (c) {
         return '<button class="chip" data-act="who" data-v="' + c[0] + '" aria-pressed="' + (state.who === c[0]) + '">' + c[1] + '</button>';
       }).join("") + '</div>' : "") +
@@ -571,16 +599,18 @@
   function viewCarte() {
     var g = gateHTML(); if (g) return g;
     var n = obsList().filter(hasCoords).length;
+    if (state.kind !== "all") n = obsList().filter(function (o) { return hasCoords(o) && (state.kind === "camera") === isCam(o); }).length;
     return '<p class="meta">' + plural(n, "observation") + ' sur la carte. Touchez une icône, puis « Voir le détail ».' +
       (CLOUD ? " Les espèces sensibles publiées par les autres membres n'y figurent pas : leur position GPS n'est pas partagée." : "") + '</p>' +
       '<div class="row legend">' + pinHTML("oiseaux", false) + '<span>Oiseau</span>' + pinHTML("mammiferes", false) + '<span>Mammifère</span>' +
-      pinHTML("autre", false) + '<span>Autre</span>' + pinHTML("oiseaux", true) + '<span>Espèce sensible</span></div>' +
+      pinHTML("autre", false) + '<span>Autre</span>' + pinHTML("camera", false) + '<span>Caméra</span>' +
+      pinHTML("oiseaux", true) + '<span>Espèce sensible</span></div>' +
       '<div id="map-all" class="map big"></div>';
   }
 
   function glossListHTML() {
     var q = norm(state.gq), counts = {};
-    obsList().forEach(function (o) { var k = (o.species || "").toLowerCase(); counts[k] = (counts[k] || 0) + 1; });
+    obsList().forEach(function (o) { if (isCam(o)) return; var k = (o.species || "").toLowerCase(); counts[k] = (counts[k] || 0) + 1; });
     var list = SPECIES.filter(function (s) {
       if (state.ggroup !== "tous" && s.group !== state.ggroup) return false;
       return !q || norm(s.name + " " + s.sci + " " + s.cat + " " + s.habitat).indexOf(q) >= 0;
@@ -661,7 +691,7 @@
   }
   function wantOnline(o) { return state.sel[o.id] === undefined ? !!o.synced : state.sel[o.id]; }
   function syncCardHTML() {
-    var mine = myList(), total = mine.length, on = mine.filter(function (o) { return o.synced; }).length;
+    var mine = syncables(), total = mine.length, on = mine.filter(function (o) { return o.synced; }).length;
     var h = '<div class="card"><h2>Synchronisation</h2>' +
       '<p>' + on + " sur " + plural(total, "observation") + ' partagée' + (on > 1 ? "s" : "") + ' en ligne avec les autres membres.</p>' +
       '<p class="notice warn">La position GPS d\'une espèce sensible au dérangement reste sur votre appareil. Seul le nom du lieu est publié.</p>' +
@@ -738,25 +768,33 @@
   var GLYPH = {
     oiseaux: '<path d="M23.2 9.6 L20.2 8.6 C19.8 6.2 16.2 5.4 14.4 7.8 C11 9.4 7.2 12 4.6 15 L0.8 19.4 L3.2 20.2 L6.8 17.6 C10.4 19.2 16.2 18.6 18.6 13.6 C19.2 12.4 19.8 11.4 20.4 10.6 Z"/><rect x="10.4" y="18" width="1" height="3.6"/><rect x="13" y="17.8" width="1" height="3.6"/>',
     mammiferes: '<path d="M23 11.6 L19.6 8.6 L19.7 4.2 L17.9 7 L16.5 4.6 L15.9 8.6 C14.5 9.6 12 10 8.2 10.4 C5.6 10.2 2.8 7.6 0.8 3.4 C0.2 8.6 2.2 13.2 6.3 14.2 L6.6 20.2 L8.2 20.2 L8.7 15.6 L13.1 15.6 L13.3 20.2 L14.9 20.2 L15.3 15 C16.4 14.6 17.2 13.9 17.6 13.2 L20.2 12.7 Z"/>',
+    camera: '<path fill-rule="evenodd" d="M3.2 7.4 H7.4 L9 4.9 H15 L16.6 7.4 H20.8 C21.8 7.4 22.6 8.2 22.6 9.2 V17.8 C22.6 18.8 21.8 19.6 20.8 19.6 H3.2 C2.2 19.6 1.4 18.8 1.4 17.8 V9.2 C1.4 8.2 2.2 7.4 3.2 7.4 Z M12 9.9 C9.8 9.9 8 11.7 8 13.9 C8 16.1 9.8 17.9 12 17.9 C14.2 17.9 16 16.1 16 13.9 C16 11.7 14.2 9.9 12 9.9 Z"/><circle cx="19.6" cy="10.4" r="0.9"/>',
     autre: '<circle cx="12" cy="12" r="4.5"/>'
   };
-  function obsGroup(o) { var sp = BY_NAME[(o.species || "").toLowerCase()]; return sp ? sp.group : "autre"; }
+  function obsGroup(o) {
+    if (isCam(o)) return "camera";
+    var sp = BY_NAME[(o.species || "").toLowerCase()];
+    return sp ? sp.group : "autre";
+  }
   function pinHTML(group, sensible) {
     return '<span class="pin pin-' + group + (sensible ? " pin-sensible" : "") + '"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor">' + GLYPH[group] + '</svg></span>';
   }
   function obsMarker(o) {
     var sp = BY_NAME[(o.species || "").toLowerCase()], group = obsGroup(o);
     return L.marker([o.lat, o.lng], {
-      title: o.species, alt: (group === "oiseaux" ? "Oiseau : " : group === "mammiferes" ? "Mammifère : " : "") + o.species,
+      title: isCam(o) ? camName(o) : o.species,
+      alt: (group === "oiseaux" ? "Oiseau : " : group === "mammiferes" ? "Mammifère : " : group === "camera" ? "Caméra : " : "") +
+        (isCam(o) ? camName(o) : o.species),
       icon: L.divIcon({ className: "pin-wrap", html: pinHTML(group, isSensitive(o)), iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] })
     });
   }
   function popupNode(o) {
     var box = document.createElement("div");
     box.className = "pop";
-    box.innerHTML = '<strong>' + esc(o.species) + (o.count > 1 ? " × " + esc(o.count) : "") + '</strong>' +
-      '<span>' + esc(fmtDate(o.date)) + '</span>' + (o.place ? '<span>' + esc(o.place) + '</span>' : "") +
-      '<a href="#carte" class="pop-link">Voir le détail de l\'observation</a>';
+    box.innerHTML = '<strong>' + esc(isCam(o) ? camName(o) : o.species) + (!isCam(o) && o.count > 1 ? " × " + esc(o.count) : "") + '</strong>' +
+      '<span>' + (isCam(o) ? "Caméra posée le " + esc(shortDate(o.date)) : esc(fmtDate(o.date))) + '</span>' +
+      (o.place ? '<span>' + esc(o.place) + '</span>' : "") +
+      '<a href="#carte" class="pop-link">Voir le détail</a>';
     // Leaflet bloque la propagation des clics dans une bulle : le lien porte son propre écouteur.
     box.querySelector(".pop-link").addEventListener("click", function (e) { e.preventDefault(); openDetail(o.id); });
     return box;
@@ -774,6 +812,7 @@
   /* ---------- détail ---------- */
   function openDetail(id) {
     var o = findObs(id); if (!o) return;
+    if (isCam(o)) return openCamDetail(o);
     var sp = BY_NAME[(o.species || "").toLowerCase()];
     var d = $("dlg-detail"), cloudMine = CLOUD && !o.other, sens = isSensitive(o);
     var sensMsg = !sens ? "" : o.other ? "Position GPS non communiquée : espèce sensible au dérangement."
@@ -809,6 +848,28 @@
     }
   }
 
+  function openCamDetail(o) {
+    var d = $("dlg-detail");
+    d.innerHTML = '<div class="dlg">' +
+      '<div><h2>' + esc(camName(o)) + '</h2><span class="pill cam">Caméra</span></div>' +
+      '<p>Posée le ' + esc(fmtDate(o.date)) + '</p>' +
+      (o.place ? '<p><strong>Emplacement :</strong> ' + esc(o.place) + '</p>' : "") +
+      (hasCoords(o) ? '<p class="meta">GPS ' + o.lat.toFixed(5) + ", " + o.lng.toFixed(5) +
+        ' · <a href="' + osmLink(o) + '" target="_blank" rel="noopener">Ouvrir dans OpenStreetMap</a></p><div id="map-detail" class="map"></div>' : "") +
+      '<p class="notice">Emplacement gardé sur cet appareil : il n\'est jamais publié dans le fil en ligne.</p>' +
+      (o.photo ? '<img class="photo" alt="Photo de la caméra" src="' + esc(o.photo) + '">' : "") +
+      (o.notes ? '<p style="white-space:pre-wrap">' + esc(o.notes) + '</p>' : "") +
+      '<div class="row"><button class="btn" data-act="copy-obs" data-id="' + esc(o.id) + '">Copier la fiche</button></div>' +
+      '<div class="row"><button class="btn small" data-act="edit" data-id="' + esc(o.id) + '">Modifier</button>' +
+      '<button class="btn small danger" data-act="del" data-id="' + esc(o.id) + '">Supprimer</button>' +
+      '<button class="btn small" data-act="close-detail">Fermer</button></div></div>';
+    if (!d.open) d.showModal();
+    if (hasCoords(o) && $("map-detail")) {
+      var m = makeMap("detail", $("map-detail"), [o.lat, o.lng], 14);
+      if (m) obsMarker(o).addTo(m);
+    }
+  }
+
   /* ---------- formulaire ---------- */
   function coordsLabel(f) { return hasCoords(f) ? f.lat.toFixed(5) + ", " + f.lng.toFixed(5) : "Position non définie"; }
   function photoPreviewHTML(src) {
@@ -817,26 +878,36 @@
   }
   function openForm(o, species) {
     var f = state.form = o ? Object.assign({}, o) : {
-      species: species || "", date: nowLocal(), count: 1, place: "", lat: null, lng: null, notes: "", photo: "", hideLoc: false
+      species: species || "", date: nowLocal(), count: 1, place: "", lat: null, lng: null, notes: "", photo: "", hideLoc: false, kind: ""
     };
+    var cam = isCam(f);
     var d = $("dlg-form");
-    d.innerHTML = '<div class="dlg"><h2>' + (o ? "Modifier l'observation" : "Nouvelle observation") + '</h2>' +
+    d.innerHTML = '<div class="dlg"><h2>' + (f.id ? (cam ? "Modifier la caméra" : "Modifier l'observation")
+      : cam ? "Nouvelle caméra" : "Nouvelle observation") + '</h2>' +
       '<form id="obs-form">' +
-      '<label for="f-species">Espèce<input id="f-species" list="species-list" required autocomplete="off" value="' + esc(f.species) + '" placeholder="Nom du glossaire ou saisie libre"></label>' +
-      '<datalist id="species-list">' + SPECIES.map(function (s) { return '<option value="' + esc(s.name) + '">' + esc(s.sci) + '</option>'; }).join("") + '</datalist>' +
-      '<div class="two"><label for="f-date">Date et heure<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>' +
-      '<label for="f-count">Nombre d\'individus<input id="f-count" type="number" min="1" inputmode="numeric" value="' + esc(f.count || 1) + '"></label></div>' +
-      '<label for="f-place">Lieu (nom)<input id="f-place" value="' + esc(f.place) + '" placeholder="ex. Haff Réimech, étang nord"></label>' +
+      '<div class="chips">' + [["", "Observation"], ["camera", "Caméra"]].map(function (k) {
+        return '<button type="button" class="chip" data-act="fkind" data-v="' + k[0] + '" aria-pressed="' + ((f.kind || "") === k[0]) + '">' + k[1] + '</button>';
+      }).join("") + '</div>' +
+      (cam ? '<p class="notice">Une caméra reste sur cet appareil : son emplacement n\'est jamais publié dans le fil en ligne.</p>' : "") +
+      (cam
+        ? '<label for="f-species">Nom de la caméra<input id="f-species" required autocomplete="off" value="' + esc(f.species) + '" placeholder="ex. Caméra 3 — layon est"></label>'
+        : '<label for="f-species">Espèce<input id="f-species" list="species-list" required autocomplete="off" value="' + esc(f.species) + '" placeholder="Nom du glossaire ou saisie libre"></label>' +
+          '<datalist id="species-list">' + SPECIES.map(function (s) { return '<option value="' + esc(s.name) + '">' + esc(s.sci) + '</option>'; }).join("") + '</datalist>') +
+      (cam
+        ? '<label for="f-date">Date de pose<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>'
+        : '<div class="two"><label for="f-date">Date et heure<input id="f-date" type="datetime-local" required value="' + esc(f.date) + '"></label>' +
+          '<label for="f-count">Nombre d\'individus<input id="f-count" type="number" min="1" inputmode="numeric" value="' + esc(f.count || 1) + '"></label></div>') +
+      '<label for="f-place">Lieu (nom)<input id="f-place" value="' + esc(f.place) + '" placeholder="' + (cam ? "ex. versant nord, parcelle 12" : "ex. Haff Réimech, étang nord") + '"></label>' +
       '<div class="row"><button class="btn" type="button" data-act="gps">Ma position GPS</button>' +
       '<span class="meta" id="f-coords">' + coordsLabel(f) + '</span></div>' +
       '<div id="map-form" class="map"></div><p class="meta">Touchez la carte pour placer ou corriger le point.</p>' +
-      '<label class="chk" for="f-hide"><input type="checkbox" id="f-hide"' + (f.hideLoc ? " checked" : "") + '><span class="grow">Espèce sensible : ne pas publier la position GPS en ligne' +
-      '<br><span class="meta">Toujours appliqué aux espèces marquées sensibles dans le glossaire.</span></span></label>' +
+      (cam ? "" : '<label class="chk" for="f-hide"><input type="checkbox" id="f-hide"' + (f.hideLoc ? " checked" : "") + '><span class="grow">Espèce sensible : ne pas publier la position GPS en ligne' +
+      '<br><span class="meta">Toujours appliqué aux espèces marquées sensibles dans le glossaire.</span></span></label>') +
       '<div class="field"><span class="flabel">Photo (facultative, réduite automatiquement)</span><div class="row">' +
       '<label class="btn" for="f-cam">Prendre une photo<input id="f-cam" type="file" accept="image/*" capture="environment" hidden></label>' +
       '<label class="btn" for="f-photo">Choisir un fichier ou dans la galerie<input id="f-photo" type="file" accept="image/*" hidden></label></div></div>' +
       '<div id="f-preview" class="stack tight">' + photoPreviewHTML(f.photo) + '</div>' +
-      '<label for="f-notes">Notes<textarea id="f-notes" rows="3" placeholder="Comportement, lumière, matériel…">' + esc(f.notes) + '</textarea></label>' +
+      '<label for="f-notes">Notes<textarea id="f-notes" rows="3" placeholder="' + (cam ? "Modèle, carte mémoire, code, date de relève…" : "Comportement, lumière, matériel…") + '">' + esc(f.notes) + '</textarea></label>' +
       '<div class="row"><button class="btn primary" type="submit">Enregistrer</button>' +
       '<button class="btn" type="button" data-act="close-form">Annuler</button></div></form></div>';
     if ($("dlg-detail").open) $("dlg-detail").close();
@@ -848,6 +919,17 @@
       if (hasCoords(f)) setFormPoint(f.lat, f.lng, false);
       m.on("click", function (e) { setFormPoint(e.latlng.lat, e.latlng.lng, false); });
     }
+  }
+  /* Relit les champs saisis : la bascule observation / caméra redessine le formulaire. */
+  function readForm() {
+    var f = state.form; if (!f) return f;
+    if ($("f-species")) f.species = $("f-species").value.trim();
+    if ($("f-date")) f.date = $("f-date").value;
+    if ($("f-count")) f.count = Math.max(1, parseInt($("f-count").value, 10) || 1);
+    if ($("f-place")) f.place = $("f-place").value.trim();
+    if ($("f-notes")) f.notes = $("f-notes").value.trim();
+    f.hideLoc = $("f-hide") ? $("f-hide").checked : !!f.hideLoc;
+    return f;
   }
   var formMarker = null;
   function setFormPoint(lat, lng, recenter) {
@@ -884,9 +966,15 @@
     else if (act === "close-form") { $("dlg-form").close(); }
     else if (act === "edit") { openForm(findObs(id)); }
     else if (act === "rm-photo") { state.form.photo = ""; $("f-preview").innerHTML = ""; }
+    else if (act === "fkind") {
+      var f = readForm(); f.kind = el.dataset.v;
+      openForm(f);                                  // redessine le formulaire sans perdre la saisie
+    }
     else if (act === "del") {
-      if (confirm("Supprimer définitivement cette observation" + (CLOUD ? ", ici et dans le fil en ligne" : "") + " ?")) {
-        store.deleteObs(id).then(function () { $("dlg-detail").close(); toast("Observation supprimée."); render(); })
+      var del = findObs(id);
+      if (confirm(del && isCam(del) ? "Supprimer définitivement cette caméra ?"
+        : "Supprimer définitivement cette observation" + (CLOUD ? ", ici et dans le fil en ligne" : "") + " ?")) {
+        store.deleteObs(id).then(function () { $("dlg-detail").close(); toast(del && isCam(del) ? "Caméra supprimée." : "Observation supprimée."); render(); })
           .catch(function () { toast("Suppression impossible."); });
       }
     }
@@ -898,9 +986,10 @@
       });
     }
     else if (act === "sel-all" || act === "sel-none") {
-      myList().forEach(function (x) { state.sel[x.id] = act === "sel-all"; }); render();
+      syncables().forEach(function (x) { state.sel[x.id] = act === "sel-all"; }); render();
     }
     else if (act === "who") { state.who = el.dataset.v; render(); }
+    else if (act === "kind") { state.kind = el.dataset.v; render(); }
     else if (act === "like") { toggleLike(id); }
     else if (act === "moderate") {
       if (confirm("Retirer cette observation du fil en ligne ? Son auteur la conserve sur son appareil.")) {
@@ -909,7 +998,7 @@
     }
     else if (act === "sel-apply") {
       var jobs = [], pub = 0, unp = 0;
-      myList().forEach(function (x) {
+      syncables().forEach(function (x) {
         var want = wantOnline(x);
         if (want && !x.synced) { pub++; jobs.push(publish(x)); }
         else if (!want && x.synced) { unp++; jobs.push(unpublish(x)); }
@@ -998,16 +1087,20 @@
     e.preventDefault();
     var f = e.target;
     if (f.id === "obs-form") {
-      var name = $("f-species").value.trim(), sp = BY_NAME[name.toLowerCase()];
-      var o = Object.assign({}, state.form, {
-        species: sp ? sp.name : name, sci: sp ? sp.sci : (state.form.sci && state.form.species === name ? state.form.sci : ""),
-        date: $("f-date").value, count: Math.max(1, parseInt($("f-count").value, 10) || 1),
-        place: $("f-place").value.trim(), notes: $("f-notes").value.trim(), hideLoc: $("f-hide").checked
-      });
-      if (!hasCoords(o) && !o.place) { toast("Indiquez un lieu : position GPS, point sur la carte ou nom."); return; }
+      var o = Object.assign({}, readForm());
+      if (isCam(o)) { o.sci = ""; o.count = 1; o.hideLoc = false; }
+      else {
+        var sp = BY_NAME[o.species.toLowerCase()];
+        if (sp) { o.species = sp.name; o.sci = sp.sci; }
+        else if (!state.form.sci) o.sci = "";
+      }
+      if (!hasCoords(o) && !o.place) {
+        toast(isCam(o) ? "Indiquez l'emplacement de la caméra : position GPS, point sur la carte ou nom."
+          : "Indiquez un lieu : position GPS, point sur la carte ou nom."); return;
+      }
       store.saveObs(o).then(function () {
         $("dlg-form").close();
-        toast(CLOUD && !o.synced ? "Enregistrée sur cet appareil (non publiée)." : "Observation enregistrée.");
+        toast(isCam(o) ? "Caméra enregistrée." : CLOUD && !o.synced ? "Enregistrée sur cet appareil (non publiée)." : "Observation enregistrée.");
         render();
       }).catch(function (err) { console.error(err); toast("Enregistrement impossible : stockage de l'appareil plein ?"); });
     } else if (f.id === "sub-form") {
