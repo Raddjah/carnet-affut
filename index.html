@@ -7,7 +7,12 @@
 <meta name="theme-color" content="#0c6b7f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<!-- iPad et iPhone : plein écran sans la barre de Safari (iOS 26 le fait seul, ces balises servent aux versions antérieures) -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Carnet d'affût">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
@@ -140,8 +145,8 @@ label.opt:has(input:disabled){opacity:.55;cursor:default}
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="config.js"></script>
-<script src="i18n.js"></script>
-<script src="glossaire.js"></script>
-<script src="app.js"></script>
+<script src="i18n.js?v=4"></script>
+<script src="glossaire.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

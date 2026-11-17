@@ -64,6 +64,7 @@
   }
 
   /* ---------- configuration et mode ---------- */
+  var VERSION = 4;   // doit correspondre au ?v=4 des balises script d'index.html
   var CFG = window.CARNET_CONFIG || {};
   var ONLINE_OK = !!(CFG.firebase && CFG.firebase.apiKey);
   var MODE = ONLINE_OK ? (LS.get("carnet.mode", null) || "online") : "local";
@@ -298,8 +299,14 @@
         c.synced = true; c.authorUid = u; jobs.push(c); return c;
       }
       if (fresh && !!c !== !!o.synced) { o.synced = !!c; jobs.push(o); }
-      // Remise en conformité : position d'une espèce sensible encore en ligne, nom de lieu ou auteur manquant.
-      if (c && fresh && ((isSensitive(o) && (c.lat != null || !c.locHidden)) || (o.place && !c.place) || !c.authorUid)) pushCloud(o);
+      // Remise en conformité du document en ligne, dans les deux sens : une espèce sensible ne doit pas
+      // y garder sa position, et une espèce qui ne l'est pas doit la retrouver si elle a été masquée à tort.
+      if (c && fresh) {
+        var masquer = isSensitive(o);
+        var conforme = masquer ? (c.locHidden === true && c.lat == null)
+                               : (!c.locHidden && (!hasCoords(o) || c.lat != null));
+        if (!conforme || (o.place && !c.place) || !c.authorUid) pushCloud(o);
+      }
       return o;
     });
     Object.keys(cloud).forEach(function (id) {
@@ -763,6 +770,8 @@
       h += '<div class="card"><p class="meta">' + esc(t("connected_as", state.user.email)) + '</p>' +
         '<div><button class="btn small" data-act="signout">' + esc(t("signout")) + '</button></div></div>';
     }
+    h += '<p class="meta" style="text-align:center">Version ' + VERSION + ' · ' + esc(SPECIES.length) + ' ' +
+      esc(t("gloss_all").toLowerCase()) + '</p>';
     return h;
   }
 
