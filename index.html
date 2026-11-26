@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Carnet d'affût</title>
 <meta name="theme-color" content="#0c6b7f">
 <link rel="manifest" href="manifest.webmanifest">
@@ -11,7 +11,7 @@
 <!-- iPad et iPhone : plein écran sans la barre de Safari (iOS 26 le fait seul, ces balises servent aux versions antérieures) -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Carnet d'affût">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,7 +42,7 @@ h2{font-size:1.05rem;font-weight:700}
 h3{font-size:1rem;font-weight:700}
 p{margin:0}
 em.sci{font-style:italic;color:var(--muted);font-size:.9rem}
-header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:14px 16px 10px;border-bottom:1px solid var(--line);min-height:140px;color:#fff;background:linear-gradient(to right,rgba(0,0,0,.30),rgba(0,0,0,0) 60%),url("images/bandeau-foret-960.jpg") center 60%/cover no-repeat}
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:max(14px, env(safe-area-inset-top)) 16px 10px;border-bottom:1px solid var(--line);min-height:140px;color:#fff;background:linear-gradient(to right,rgba(0,0,0,.30),rgba(0,0,0,0) 60%),url("images/bandeau-foret-960.jpg") center 60%/cover no-repeat}
 @media (min-width:961px){header.top{min-height:200px;background-image:linear-gradient(to right,rgba(0,0,0,.30),rgba(0,0,0,0) 60%),url("images/bandeau-foret.jpg")}}
 header.top > *{color:#fff !important;text-shadow:0 1px 3px rgba(0,0,0,.9);background:rgba(0,0,0,.35);padding:4px 10px;border-radius:8px}
 header.top > * *{color:#fff !important}
