@@ -4,10 +4,10 @@
      pour que le carnet s'ouvre sur le terrain sans réseau. Un échec ici ne bloque pas l'installation.
    - PHOTOS : photos du glossaire (Wikimedia Commons), gardées après le premier affichage.
    Pensez à augmenter CACHE à chaque mise en ligne d'une nouvelle version. */
-var CACHE = "carnet-affut-v9";
+var CACHE = "carnet-affut-v10";
 var LIBS = "carnet-affut-libs-v1";
 var PHOTOS = "carnet-affut-photos";
-var SHELL = ["./", "index.html", "app.js?v=5", "i18n.js?v=5", "glossaire.js?v=5", "config.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
+var SHELL = ["./", "index.html", "app.js?v=5", "i18n.js?v=5", "glossaire.js?v=5", "config.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "images/bandeau-foret.jpg", "images/bandeau-foret-960.jpg"];
 var FB = "https://www.gstatic.com/firebasejs/10.12.2/";
 var LIB_URLS = [
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
