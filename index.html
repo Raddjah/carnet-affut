@@ -46,6 +46,8 @@ header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:1
 @media (min-width:961px){header.top{min-height:200px;background-image:linear-gradient(to right,rgba(0,0,0,.30),rgba(0,0,0,0) 60%),url("images/bandeau-foret.jpg")}}
 header.top > *{color:#fff !important;text-shadow:0 1px 3px rgba(0,0,0,.9);background:rgba(0,0,0,.35);padding:4px 10px;border-radius:8px}
 header.top > * *{color:#fff !important}
+header.top small{font-size:.8rem;text-align:right}
+main{flex:1;overflow-y:auto;padding:14px 16px 96px;display:flex;flex-direction:column;gap:12px;max-width:720px;width:100%;margin:0 auto}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 nav.tabs a{flex:1;min-width:0;text-align:center;padding:14px 2px;color:var(--muted);text-decoration:none;font-weight:600;font-size:.78rem;border-top:3px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 nav.tabs a[aria-current="page"]{color:var(--accent);border-top-color:var(--accent)}
@@ -74,7 +76,8 @@ form{display:flex;flex-direction:column;gap:12px}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .cat{font-family:var(--display);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:8px}
 .map{height:240px;border-radius:10px;border:1px solid var(--line);overflow:hidden;background:var(--line)}
-.map.big{height:calc(100vh - 240px);min-height:320px}
+.map.big{height:calc(100dvh - 330px);min-height:280px}
+@media (min-width:961px){.map.big{height:calc(100dvh - 390px)}}}
 .notice{border-left:4px solid var(--accent);background:var(--surface);padding:10px 12px;border-radius:0 8px 8px 0;font-size:.9rem}
 .notice.warn{border-left-color:var(--warn)}
 dialog{border:none;border-radius:14px;padding:0;background:var(--surface);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 32px)}
